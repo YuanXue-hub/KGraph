@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yuan.seedboot.mapper.RequestLogMapper">
+
+    <resultMap id="BaseResultMap" type="com.yuan.seedboot.model.entity.RequestLog">
+            <id property="id" column="id" />
+            <result property="userId" column="userId" />
+            <result property="apiKeyId" column="apiKeyId" />
+            <result property="modelName" column="modelName" />
+            <result property="promptTokens" column="promptTokens" />
+            <result property="completionTokens" column="completionTokens" />
+            <result property="totalTokens" column="totalTokens" />
+            <result property="duration" column="duration" />
+            <result property="status" column="status" />
+            <result property="errorMessage" column="errorMessage" />
+            <result property="createTime" column="createTime" />
+            <result property="updateTime" column="updateTime" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,userId,apiKeyId,modelName,promptTokens,completionTokens,
+        totalTokens,duration,status,errorMessage,createTime,
+        updateTime
+    </sql>
+</mapper>
