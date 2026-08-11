@@ -8,17 +8,25 @@
 
 ### 首页 Dashboard
 
+展示系统总览：项目/模型/实体/抽取任务统计、核心功能矩阵、最近抽取任务列表。
+
 ![Dashboard](docs/images/dashboard.jpg)
 
 ### 图谱探索
 
+基于 AntV G6 的交互式图谱可视化，支持节点拖拽、缩放、双击展开邻居、单击查看属性。三栏布局：左侧控制面板、中间画布、右侧节点详情。
+
 ![Graph Explore](docs/images/graph-explore.jpg)
 
-### 知识抽取
+### 知识抽取（KOS 抽取）
+
+KOS 抽取页面：左侧配置区（项目/模型选择、语料来源、11 项 KOS 参数）+ 右侧结果区（实体列表、关系列表、历史记录）。
 
 ![Extraction](docs/images/extraction.jpg)
 
-### 模型训练
+### 深度学习抽取 - 模型训练
+
+模型训练页面：训练任务列表、训练配置表单、训练曲线监控（Loss 曲线 + P/R/F1 曲线分图展示）。
 
 ![Model Training](docs/images/model-training.jpg)
 
