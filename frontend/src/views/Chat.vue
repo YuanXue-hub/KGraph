@@ -700,14 +700,15 @@ watch(
     "Hiragino Sans GB", "Microsoft YaHei", Helvetica, Arial, sans-serif;
 }
 
-/* ============ 左侧边栏 ============ */
+/* ============ 左侧边栏（浅色系） ============ */
 .chat-sidebar {
   width: 260px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: #111214;
-  color: #c9ccd1;
+  background: #f7f8fa;
+  color: #4b5563;
+  border-right: 1px solid #ebecef;
 }
 
 .sidebar-header { padding: 16px; }
@@ -719,16 +720,16 @@ watch(
   width: 100%;
   height: 38px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: #fff;
+  background: #ffffff;
+  border: 1px solid #e3e5ea;
+  color: #1f2937;
   font-size: 14px;
   font-weight: 500;
   transition: all .15s ease;
 }
 .new-chat-btn:hover {
-  background: rgba(255,255,255,0.08);
-  border-color: rgba(255,255,255,0.14);
+  background: #f0f3f9;
+  border-color: #d6dbe6;
 }
 .btn-icon { opacity: .92; }
 
@@ -745,18 +746,20 @@ watch(
   border-radius: 9px;
   margin-bottom: 2px;
   cursor: pointer;
+  color: #4b5563;
   transition: background .15s;
 }
-.session-item:hover { background: rgba(255,255,255,0.05); }
+.session-item:hover { background: #eef0f3; color: #1f2937; }
 .session-item.current {
-  background: rgba(79, 107, 255, 0.14);
-  color: #fff;
+  background: #e8edff;
+  color: #1e3a8a;
+  font-weight: 500;
 }
 .session-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: #4F6BFF;
   flex-shrink: 0;
-  box-shadow: 0 0 0 3px rgba(79,107,255,0.15);
+  box-shadow: 0 0 0 3px rgba(79,107,255,0.14);
 }
 .session-title {
   font-size: 13.5px;
@@ -771,15 +774,15 @@ watch(
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  color: #6b7280;
+  color: #9ca3af;
   font-size: 13px;
-  opacity: .8;
+  opacity: .9;
 }
 
-.sidebar-footer { padding: 14px 16px 18px; border-top: 1px solid rgba(255,255,255,0.06); }
+.sidebar-footer { padding: 14px 16px 18px; border-top: 1px solid #ebecef; }
 .footer-brand {
   display: flex; align-items: center; gap: 8px;
-  font-size: 12.5px; color: #8b909a;
+  font-size: 12.5px; color: #6b7280;
 }
 .brand-dot {
   width: 8px; height: 8px; border-radius: 50%;
