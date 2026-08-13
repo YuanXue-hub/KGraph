@@ -119,6 +119,11 @@
           <el-icon><DataAnalysis /></el-icon>
           <span>图谱探索</span>
         </el-menu-item>
+
+        <el-menu-item index="/chat">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>智能问答</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 

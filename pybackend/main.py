@@ -9,6 +9,8 @@ from api.extraction import router as extraction_router
 from api.kos import router as kos_router
 from api.dl import router as dl_router
 from api.train import router as train_router
+from api.chat_agent import router as chat_agent_router
+from core.agent_tools import _Neo4jToolContext
 from core.graph_writer import GraphWriter
 from core.llm_client import LLMClient
 
@@ -26,10 +28,12 @@ async def lifespan(app: FastAPI):
     app.state.config = config
     app.state.llm_client = LLMClient(config)
     app.state.graph_writer = GraphWriter(config)
+    _Neo4jToolContext.init(config)
     try:
         yield
     finally:
         app.state.graph_writer.close()
+        _Neo4jToolContext.close()
 
 
 app = FastAPI(title="KGraph Knowledge Extraction Backend", lifespan=lifespan)
@@ -48,6 +52,7 @@ app.include_router(extraction_router)
 app.include_router(kos_router)
 app.include_router(dl_router)
 app.include_router(train_router)
+app.include_router(chat_agent_router)
 
 
 if __name__ == "__main__":

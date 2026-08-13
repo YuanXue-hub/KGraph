@@ -1,18 +1,11 @@
 package com.yuan.seedboot.service;
 
-import com.yuan.seedboot.model.dto.ChatRequest;
-import com.yuan.seedboot.model.dto.ChatResponse;
+import org.springframework.http.codec.ServerSentEvent;
 import reactor.core.publisher.Flux;
 
 public interface ChatService {
-
     /**
-     * 非流式对话
+     * 流式对话 Agent —— 返回 ServerSentEvent 流，保证逐事件即时推送
      */
-    ChatResponse chat(String userInput, Long userId);
-
-    /**
-     *  流式对话
-     */
-    Flux<String> chatStream(String userInput, Long userId);
+    Flux<ServerSentEvent<String>> chatAgentStream(String message, Long modelId);
 }

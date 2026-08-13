@@ -86,3 +86,9 @@ class TrainResult(BaseModel):
     history: List[Dict[str, Any]] = Field(default_factory=list)
     metrics: Dict[str, Any] = Field(default_factory=dict)
     duration: int = 0
+
+
+class ChatAgentRequest(BaseModel):
+    """智能问答 Agent 请求"""
+    message: str
+    modelId: int

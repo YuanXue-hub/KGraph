@@ -520,4 +520,17 @@ export const trainTaskApi = {
   }
 }
 
+/* ============ 智能问答 ============ */
+export const chatApi = {
+  agentStream(data: { message: string; modelId: number | string }) {
+    return request({
+      url: '/v1/chat/agent/stream',
+      method: 'post',
+      data,
+      responseType: 'stream',
+      timeout: 120_000,
+    })
+  },
+}
+
 export type { ApiResponse }

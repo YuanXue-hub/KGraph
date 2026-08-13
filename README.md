@@ -32,15 +32,21 @@ KOS 抽取页面：左侧配置区（项目/模型选择、语料来源、11 项
 LLM抽取页面：抽取配置（实体关系配置、抽取配置）、抽取结果展示。
 ![LLM抽取](assets/LLM%E6%8A%BD%E5%8F%96.png)
 
+### 智能问答（流式输出 · DeepSeek 风格 UI）
+
+对话式知识查询页面：参考 DeepSeek 官网的极简界面布局，支持 LLM 思维链流式展示、工具调用卡片透明层、正式回答逐字打字机效果。基于 LangGraph Agent + 图谱工具（搜索实体、获取详情、关系查询、图谱统计等）+ SSE 全链路流式推送。
+
+![智能问答](assets/%E6%99%BA%E8%83%BD%E9%97%AE%E7%AD%94.png)
+
 ## 项目简介
 
 KGraph 是一个面向知识图谱构建与管理的全栈系统，覆盖从知识抽取、本体建模、图谱可视化到模型训练的完整链路。系统采用三层混合架构：
 
 | 层级 | 技术栈 | 职责 |
 |------|--------|------|
-| 前端 | Vue 3 + Element Plus + Vite + TypeScript | UI 交互、图可视化（G6）、图表展示（ECharts） |
-| Java 主服务 | Spring Boot + MyBatis-Plus + MySQL + Neo4j + MinIO | 业务编排、权限管理、结构化抽取、图谱 CRUD |
-| Python 微服务 | FastAPI + OpenAI SDK | LLM 抽取、KOS 抽取、深度学习抽取、模型训练 |
+| 前端 | Vue 3 + Element Plus + Vite + TypeScript + marked（Markdown 渲染） | UI 交互、图可视化（G6）、图表展示（ECharts）、SSE 流式接收 + 打字机动效 |
+| Java 主服务 | Spring Boot + MyBatis-Plus + MySQL + Neo4j + MinIO + WebFlux（`Flux<ServerSentEvent>` SSE 代理） | 业务编排、权限管理、结构化抽取、图谱 CRUD、流式事件透传 |
+| Python 微服务 | FastAPI + OpenAI SDK + LangGraph（Agent 编排） + `StreamingResponse`（SSE） | LLM 抽取、KOS 抽取、深度学习抽取、模型训练、智能问答 Agent（流式工具调用） |
 
 ### 核心功能
 
@@ -55,7 +61,7 @@ KGraph 是一个面向知识图谱构建与管理的全栈系统，覆盖从知�
 - **实体关系管理**：CRUD 操作，分页展示
 - **模型训练**：训练任务管理、曲线监控、模型效果评估
 - **数据标注**：标注任务管理，支持 BIO 标签体系
-- **智能问答**：基于 Spring AI 的对话式知识查询
+- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 6 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`list_relation_types`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① DeepSeek 风格思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
 
 ---
 
@@ -70,6 +76,7 @@ KGraph 是一个面向知识图谱构建与管理的全栈系统，覆盖从知�
 - ECharts（训练曲线/指标图表）
 - Pinia（状态管理）
 - Axios（HTTP 请求）
+- marked（Markdown 渲染，智能问答回答展示）
 
 ### Java 主服务
 
@@ -78,7 +85,7 @@ KGraph 是一个面向知识图谱构建与管理的全栈系统，覆盖从知�
 - MySQL 8
 - Neo4j 5
 - MinIO（对象存储）
-- Spring AI（LLM 集成）
+- Spring WebFlux（`Flux<ServerSentEvent>` SSE 流式代理）
 - Knife4j（API 文档）
 
 ### Python 微服务
@@ -86,6 +93,8 @@ KGraph 是一个面向知识图谱构建与管理的全栈系统，覆盖从知�
 - FastAPI
 - OpenAI Python SDK
 - Neo4j Python Driver
+- LangChain / LangGraph（智能问答 Agent 编排 + 工具调用生命周期事件）
+- langchain-openai（ChatOpenAI 流式）
 
 ---
 
@@ -106,6 +115,7 @@ KGraph/
 │   │       ├── platform/        # 平台管理
 │   │       ├── Home.vue         # 首页
 │   │       ├── Explore.vue      # 图谱探索
+│   │       ├── Chat.vue         # ⭐ 智能问答（流式 + DeepSeek UI）
 │   │       ├── Extraction.vue   # LLM 抽取
 │   │       ├── KosExtraction.vue# KOS 抽取
 │   │       ├── DlExtraction.vue # 深度学习抽取
@@ -118,20 +128,22 @@ KGraph/
 ├── src/main/java/.../seedboot/  # Java 主服务
 │   ├── annotation/              # 权限注解
 │   ├── aop/                     # AOP 切面
-│   ├── config/                  # 配置类
-│   ├── controller/              # 控制器
+│   ├── config/                  # 配置类（含 PythonServiceClient、CustomChatMemoryRepository）
+│   ├── controller/              # 控制器（含 ChatController 流式路由）
 │   ├── mapper/                  # MyBatis Mapper
 │   ├── model/                   # 数据模型
 │   │   ├── entity/              # 实体类
 │   │   ├── request/             # 请求对象
 │   │   └── vo/                  # 视图对象
-│   ├── service/                 # 业务逻辑
+│   ├── service/                 # 业务逻辑（ChatService 返回 Flux<ServerSentEvent>）
 │   │   └── Impl/                # 实现类
 │   └── SeedBootApplication.java
 │
 ├── pybackend/                   # Python 微服务
 │   ├── api/                     # FastAPI 路由
+│   │   └── chat_agent.py        # ⭐ 智能问答 SSE Agent 流式接口
 │   ├── core/                    # 核心算法
+│   │   ├── agent_tools.py       # ⭐ Agent 图谱工具集（6个工具）
 │   │   ├── llm_client.py        # LLM 调用封装
 │   │   ├── prompt_builder.py    # Prompt 构造
 │   │   ├── kos_extractor.py     # KOS 抽取
@@ -141,7 +153,7 @@ KGraph/
 │   ├── models/                  # Pydantic 模型
 │   ├── text_processor/          # 文本处理工具
 │   ├── config.example.json      # 配置模板
-│   ├── main.py                  # FastAPI 入口
+│   ├── main.py                  # FastAPI 入口（注册 chat_agent 路由）
 │   └── requirements.txt
 │
 ├── sql/                         # 数据库脚本
@@ -308,6 +320,49 @@ npm run dev
 - 训练曲线监控（Loss + P/R/F1 分图展示）
 - 模型效果评估（混淆矩阵 + 错误样本分析）
 - 任务状态 localStorage 持久化
+
+### 智能问答（LangGraph Agent · SSE 流式）
+
+智能问答模块实现了 **Python FastAPI（LangGraph Agent） → Java Spring Boot（WebFlux SSE 代理） → 前端 Vue3（打字机渲染）** 的全链路流式传输，参考 DeepSeek 官网视觉风格设计 UI。
+
+#### 1. 事件类型与 SSE 协议
+
+Python 后端通过 `StreamingResponse` 发出标准 SSE 帧（`Cache-Control: no-cache` / `Connection: keep-alive`），事件种类：
+
+| event       | 触发时机                    | data 字段             |
+|-------------|-----------------------------|-----------------------|
+| `thinking`  | Agent 推理阶段（on_chain_stream 累计 delta 切片） | `{content}` |
+| `tool_call` | LangGraph `on_tool_start`   | `{tool, input}`       |
+| `tool_output` | LangGraph `on_tool_end`   | `{tool, output}`      |
+| `answer`    | Agent 最终回答（on_chat_model_stream 累计 delta 切片） | `{content}` |
+| `done`      | LangGraph run 结束          | 任意（前端收到即断开）|
+
+#### 2. 增量推送 + 打字机动效
+
+- **Python 端**：`chat_agent.py` 维护 `thinking_sent_len` / `answer_sent_len` 已推送游标，对 LangGraph 返回的「累计字符串」切片只发送 delta 增量；`_sse_stream_chunks()` 再将 delta 拆成约 4 字符一个 SSE 帧，模拟逐字节奏。
+- **Java 端**：`ChatServiceImpl` 使用 `ParameterizedTypeReference<ServerSentEvent<String>>` 声明类型，WebFlux `bodyToFlux` 逐事件透传，`maxInMemorySize` 禁用缓冲。
+- **前端端**：`Chat.vue` 维护 3 条 **缓冲队列 + 定时器**（`flusherThinking`/`flusherTool`/`flusherAnswer`），以 ~30ms 间隔从队列 pop 一个字符追加到 DOM，实现「思考/工具/回答」三路独立打字机。**Markdown 通过 marked 解析为 HTML，支持代码块高亮、链接、列表、表格**。
+
+#### 3. UI 视觉（DeepSeek 风格）
+
+- 整体布局：左侧深色侧边栏（模型选择、会话切换、发送按钮）+ 右侧浅色对话区（气泡 + 卡片）
+- 思考面板：`.thinking-step` 紫色边框 + 浅紫渐变底，展开/收起动画
+- 工具调用：紧凑卡片，icon 左 + 工具名 + 输入 JSON（代码块）+ 执行输出（浅绿底 code block）
+- 正式回答：`.ai-reply` 白底卡片 + 圆角 + `prose` 样式的 Markdown 内容
+- 输入框：毛玻璃底部固定，渐变发送按钮（`bg-gradient-to-br` 蓝紫→蓝），回车发送 / Shift+回车换行
+
+#### 4. 内置图谱工具集（`pybackend/core/agent_tools.py`）
+
+| 工具 | 功能 | Cypher 示例 |
+|------|------|-------------|
+| `search_entities(keyword, modelId, limit)` | 按名称模糊搜索实体 | `WHERE n.name CONTAINS $kw` |
+| `get_entity_detail(entity_name, modelId)`  | 获取实体全部属性、标签、度 | `properties(n)` + `size((n)-[]-())` |
+| `get_entity_relations(entity_name, modelId, direction, relationType, limit)` | 查询实体的关系与邻居（支持出/入/双向、指定关系类型过滤） | `MATCH (n)-[r]-(m)` |
+| `get_graph_stats(modelId)`                 | 返回实体数 / 关系数 / 各类 Top 10 | `COUNT` 聚合 + 多次 `UNWIND keys({…})` |
+| `list_entity_types(modelId)`               | 列出所有实体标签及数量 | `labels(n)` 聚合 |
+| `list_relation_types(modelId)`             | 列出所有关系类型及数量 | `type(r)` 聚合 |
+
+> 提示：Agent 根据用户问题自主选择工具（支持多轮调用），例如「有哪些实体？」→ `search_entities`，「X 与谁有关？」→ `get_entity_relations`，「图谱里有什么统计信息？」→ `get_graph_stats`。
 
 ---
 

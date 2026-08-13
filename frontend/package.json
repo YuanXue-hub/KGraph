@@ -10,10 +10,11 @@
   },
   "dependencies": {
     "@antv/g6": "^4.8.24",
+    "@element-plus/icons-vue": "^2.3.1",
     "axios": "^1.7.7",
     "echarts": "^5.5.1",
     "element-plus": "^2.8.4",
-    "@element-plus/icons-vue": "^2.3.1",
+    "marked": "^18.0.9",
     "pinia": "^2.2.2",
     "vue": "^3.5.0",
     "vue-router": "^4.4.3"

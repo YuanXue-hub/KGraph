@@ -13,6 +13,11 @@ export default defineConfig({
     port: 5173,
     open: true,
     proxy: {
+      '/api/v1/chat': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/v1\/chat/, '/api/chat'),
+      },
       '/api': {
         target: 'http://localhost:8888',
         changeOrigin: true
