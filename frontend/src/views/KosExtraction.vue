@@ -5,6 +5,11 @@
     result-title="抽取结果"
     history-title="抽取历史记录"
   >
+    <template #page-head>
+      <h2 class="page-title">KOS 抽取</h2>
+      <p class="page-subtitle">基于术语与概念体系的知识组织结构抽取，识别高频术语与范畴分类</p>
+    </template>
+
     <template #config>
       <el-form label-width="110px" class="ext-form">
         <el-form-item label="所属项目">
@@ -605,14 +610,31 @@ onMounted(() => {
 
 <style scoped>
 .ext-form :deep(.el-divider--horizontal) {
-  margin: 16px 0;
+  margin: 18px 0;
+}
+
+.ext-form :deep(.el-divider__text) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg-card);
 }
 
 .ext-btn-action {
   width: 100%;
   height: 40px;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+
+.ext-btn-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(22, 93, 255, 0.22);
+}
+
+.ext-btn-action:active {
+  transform: translateY(0);
 }
 
 .ext-stat-tags {
@@ -627,24 +649,40 @@ onMounted(() => {
 }
 
 .ext-highlight-box {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .ext-section-title {
   font-size: 14px;
-  color: #1d2129;
-  margin-bottom: 8px;
+  color: var(--text-1);
+  margin-bottom: 10px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ext-section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-primary), var(--brand-accent));
 }
 
 .ext-highlight-text {
-  padding: 14px;
-  background: #f7f8fa;
-  border: 1px solid #f0f2f5;
-  border-radius: 8px;
+  padding: 16px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
   line-height: 1.9;
   font-size: 14px;
+  color: var(--text-2);
   white-space: pre-wrap;
+}
+
+.ext-highlight-text :deep(.hl-entity) {
+  border-radius: var(--r-sm);
 }
 
 .ext-pagination {
@@ -686,25 +724,27 @@ onMounted(() => {
   flex: 1;
   text-align: center;
   padding: 8px 0;
-  border: 1px solid #e5e6eb;
-  border-radius: 8px;
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-md);
   cursor: pointer;
   font-size: 13px;
-  color: #4e5969;
-  background: #f7f8fa;
-  transition: all 0.2s;
+  color: var(--text-2);
+  background: var(--bg-soft);
+  transition: all var(--t-fast);
+  user-select: none;
 }
 
 .corpus-tab:hover {
-  border-color: #165dff;
-  color: #165dff;
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
 }
 
 .corpus-tab.active {
-  background: #165dff;
-  border-color: #165dff;
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
   color: #fff;
   font-weight: 500;
+  box-shadow: 0 4px 12px rgba(22, 93, 255, 0.22);
 }
 
 .corpus-content {

@@ -4,44 +4,9 @@
     <div class="hero">
       <div class="hero-bg"></div>
       <div class="hero-content">
-        <svg class="hero-logo" viewBox="0 0 64 64" width="56" height="56">
-          <defs>
-            <radialGradient id="heroNodeGrad" cx="35%" cy="35%">
-              <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
-              <stop offset="100%" stop-color="#ffffff" stop-opacity="0.5" />
-            </radialGradient>
-            <radialGradient id="heroCenterGrad" cx="35%" cy="35%">
-              <stop offset="0%" stop-color="#ffffff" />
-              <stop offset="100%" stop-color="#a0c4ff" />
-            </radialGradient>
-          </defs>
-          <!-- 连线：六边形网络 -->
-          <g stroke="#ffffff" stroke-width="1" opacity="0.4" fill="none">
-            <line x1="32" y1="32" x2="50" y2="32" />
-            <line x1="32" y1="32" x2="41" y2="16.4" />
-            <line x1="32" y1="32" x2="23" y2="16.4" />
-            <line x1="32" y1="32" x2="14" y2="32" />
-            <line x1="32" y1="32" x2="23" y2="47.6" />
-            <line x1="32" y1="32" x2="41" y2="47.6" />
-            <line x1="50" y1="32" x2="41" y2="16.4" />
-            <line x1="41" y1="16.4" x2="23" y2="16.4" />
-            <line x1="23" y1="16.4" x2="14" y2="32" />
-            <line x1="14" y1="32" x2="23" y2="47.6" />
-            <line x1="23" y1="47.6" x2="41" y2="47.6" />
-            <line x1="41" y1="47.6" x2="50" y2="32" />
-          </g>
-          <!-- 外围节点 -->
-          <g fill="url(#heroNodeGrad)">
-            <circle cx="50" cy="32" r="3.6" />
-            <circle cx="41" cy="16.4" r="3.6" />
-            <circle cx="23" cy="16.4" r="3.6" />
-            <circle cx="14" cy="32" r="3.6" />
-            <circle cx="23" cy="47.6" r="3.6" />
-            <circle cx="41" cy="47.6" r="3.6" />
-          </g>
-          <!-- 中心节点 -->
-          <circle cx="32" cy="32" r="5" fill="url(#heroCenterGrad)" />
-        </svg>
+        <div class="hero-logo-wrap">
+          <KgLogo :size="56" class="hero-logo" />
+        </div>
         <div class="hero-text">
           <h1 class="hero-title">知识图谱 · 构建智能认知</h1>
           <p class="hero-desc">一站式知识图谱构建、管理与可视化探索平台，驱动数据智能生产力</p>
@@ -190,6 +155,7 @@ import {
   Collection, Grid
 } from '@element-plus/icons-vue'
 import { projectApi, modelApi, corpusApi, exploreApi, extractionApi } from '@/api'
+import KgLogo from '@/components/KgLogo.vue'
 
 // 自定义机器人图标组件
 const RobotIcon = defineComponent({
@@ -426,16 +392,29 @@ onBeforeUnmount(() => {
   border-radius: 16px;
   overflow: hidden;
   margin-bottom: 18px;
-  background: linear-gradient(135deg, #0f1f3d 0%, #1a3a6e 50%, #165dff 100%);
+  background: linear-gradient(135deg, #f7f9fc 0%, #eef2f9 50%, #e8edf7 100%);
 }
 
 .hero-bg {
   position: absolute;
   inset: 0;
   background-image:
-    radial-gradient(circle at 20% 30%, rgba(64, 128, 255, 0.3) 0%, transparent 50%),
-    radial-gradient(circle at 80% 70%, rgba(124, 77, 255, 0.2) 0%, transparent 50%);
-  opacity: 0.6;
+    radial-gradient(ellipse 60% 50% at 15% 25%, rgba(77, 107, 254, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 40% at 85% 75%, rgba(124, 77, 255, 0.1) 0%, transparent 55%),
+    radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.04) 0%, transparent 70%);
+  opacity: 1;
+}
+
+.hero-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(22, 93, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(22, 93, 255, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 50%, #000 30%, transparent 80%);
 }
 
 .hero-content {
@@ -446,9 +425,22 @@ onBeforeUnmount(() => {
   gap: 20px;
 }
 
-.hero-logo {
+.hero-logo-wrap {
   flex-shrink: 0;
-  filter: drop-shadow(0 2px 8px rgba(22, 93, 255, 0.4));
+  width: 76px;
+  height: 76px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(22, 93, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(22, 93, 255, 0.12);
+}
+
+.hero-logo {
+  filter: drop-shadow(0 2px 6px rgba(99, 102, 241, 0.4));
 }
 
 .hero-text {
@@ -458,20 +450,43 @@ onBeforeUnmount(() => {
 .hero-title {
   font-size: 26px;
   font-weight: 700;
-  color: #fff;
+  color: #1d2129;
   margin-bottom: 6px;
   letter-spacing: 1px;
 }
 
 .hero-desc {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.75);
+  color: #4e5969;
 }
 
 .hero-actions {
   display: flex;
   gap: 12px;
   flex-shrink: 0;
+}
+
+/* 浅色背景上的按钮 */
+.hero-actions :deep(.el-button--primary) {
+  background: linear-gradient(135deg, #4d6bfe 0%, #6366f1 100%) !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px rgba(77, 107, 254, 0.3);
+}
+
+.hero-actions :deep(.el-button--primary:hover) {
+  box-shadow: 0 6px 20px rgba(77, 107, 254, 0.45);
+}
+
+.hero-actions :deep(.el-button:not(.el-button--primary)) {
+  background: #fff !important;
+  border: 1px solid #e5e6eb !important;
+  color: #4e5969 !important;
+}
+
+.hero-actions :deep(.el-button:not(.el-button--primary):hover) {
+  border-color: #4d6bfe !important;
+  color: #4d6bfe !important;
+  background: #f0f4ff !important;
 }
 
 /* 统计卡片 */

@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 语料 Controller
@@ -32,12 +33,32 @@ public class CorpusController {
     private UserService userService;
 
     @PostMapping("/add")
-    @Operation(summary = "新增语料")
+    @Operation(summary = "新增语料（文本输入）")
     public BaseResponse<Corpus> addCorpus(@RequestBody CorpusAddRequest request, HttpServletRequest httpRequest) {
         ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(httpRequest);
         Corpus corpus = corpusService.addCorpus(request, loginUser);
         return ResultUtils.success(corpus);
+    }
+
+    @PostMapping("/upload")
+    @Operation(summary = "上传文档创建语料（PDF/Word，异步调用 MinerU 解析）")
+    public BaseResponse<Corpus> uploadCorpus(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("projectId") Long projectId,
+            @RequestParam(value = "title", required = false) String title,
+            HttpServletRequest httpRequest) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        Corpus corpus = corpusService.uploadCorpus(file, projectId, title, loginUser);
+        return ResultUtils.success(corpus);
+    }
+
+    @PostMapping("/reparse")
+    @Operation(summary = "重新解析文档语料")
+    public BaseResponse<Boolean> reparseCorpus(@RequestBody DeleteRequest request) {
+        ThrowUtils.throwIf(request == null || request.getId() <= 0, ErrorCode.PARAMS_ERROR);
+        boolean result = corpusService.reparseCorpus(request.getId());
+        return ResultUtils.success(result);
     }
 
     @PostMapping("/update")

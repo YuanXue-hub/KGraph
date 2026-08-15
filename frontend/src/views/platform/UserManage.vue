@@ -1,86 +1,124 @@
 <template>
-  <div class="user-manage-page">
+  <div class="page-container user-manage-page">
+    <!-- 页面头部 -->
+    <div class="page-head">
+      <div class="page-head-left">
+        <h2 class="page-title">用户管理</h2>
+        <span class="page-subtitle">管理系统用户账号、角色与资料</span>
+      </div>
+    </div>
+
     <!-- 无权限提示 -->
-    <el-empty v-if="!isAdmin" description="无权限：仅管理员可访问用户管理页面" />
+    <div v-if="!isAdmin" class="kg-card">
+      <div class="empty-state">
+        <el-icon :size="44" color="#c9cdd4"><Lock /></el-icon>
+        <p class="empty-title">无权限访问</p>
+        <p class="empty-desc">仅管理员可访问用户管理页面</p>
+      </div>
+    </div>
 
     <template v-else>
-      <!-- 搜索栏 -->
-      <el-card shadow="never" class="search-card">
-        <el-form :inline="true" class="search-form" @submit.prevent>
-          <el-form-item label="用户名">
+      <!-- 主体卡片 -->
+      <div class="kg-card">
+        <!-- 工具栏 -->
+        <div class="toolbar">
+          <div class="toolbar-left">
             <el-input
               v-model="searchForm.userName"
-              placeholder="请输入用户名"
+              placeholder="搜索用户名"
+              class="search-input"
               clearable
-              style="width: 180px"
               @keyup.enter="handleSearch"
-            />
-          </el-form-item>
-          <el-form-item label="账号">
+              @clear="handleSearch"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
             <el-input
               v-model="searchForm.userAccount"
-              placeholder="请输入账号"
+              placeholder="搜索账号"
+              class="search-input"
               clearable
-              style="width: 180px"
               @keyup.enter="handleSearch"
-            />
-          </el-form-item>
-          <el-form-item label="角色">
+              @clear="handleSearch"
+            >
+              <template #prefix>
+                <el-icon><User /></el-icon>
+              </template>
+            </el-input>
             <el-select
               v-model="searchForm.userRole"
-              placeholder="全部"
+              placeholder="角色"
               clearable
-              style="width: 140px"
+              class="role-select"
             >
               <el-option label="全部" value="" />
               <el-option label="管理员" value="admin" />
               <el-option label="普通用户" value="user" />
             </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :icon="Search" @click="handleSearch">搜索</el-button>
+            <el-button :icon="Search" @click="handleSearch">查询</el-button>
             <el-button :icon="Refresh" @click="handleReset">重置</el-button>
-            <el-button type="success" :icon="Plus" @click="openAdd">新增用户</el-button>
-          </el-form-item>
-        </el-form>
-      </el-card>
+          </div>
+          <div class="toolbar-right">
+            <el-button type="primary" :icon="Plus" @click="openAdd">新增用户</el-button>
+          </div>
+        </div>
 
-      <!-- 用户表格 -->
-      <el-card shadow="never">
-        <el-table
-          v-loading="loading"
-          :data="tableData"
-          border
-          stripe
-          highlight-current-row
-        >
-          <el-table-column label="头像" width="80" align="center">
-            <template #default="{ row }">
-              <el-avatar :size="32" :src="row.userAvatar" />
-            </template>
-          </el-table-column>
-          <el-table-column prop="userAccount" label="账号" min-width="140" show-overflow-tooltip />
-          <el-table-column prop="userName" label="昵称" min-width="140" show-overflow-tooltip />
-          <el-table-column label="角色" width="110" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.userRole === 'admin' ? 'danger' : 'primary'" size="small">
-                {{ row.userRole === 'admin' ? '管理员' : '普通用户' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="userProfile" label="简介" min-width="200" show-overflow-tooltip />
-          <el-table-column label="创建时间" width="180">
-            <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="140" align="center" fixed="right">
-            <template #default="{ row }">
-              <el-button size="small" link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
-              <el-button size="small" link type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <!-- 表格 -->
+        <div class="table-wrap">
+          <el-table
+            v-loading="loading"
+            :data="tableData"
+            style="width: 100%"
+            :header-cell-style="{ background: 'transparent' }"
+          >
+            <el-table-column label="用户" min-width="220">
+              <template #default="{ row }">
+                <div class="cell-user">
+                  <el-avatar :size="34" :src="row.userAvatar" class="user-avatar">
+                    {{ (row.userName || row.userAccount || '?').charAt(0).toUpperCase() }}
+                  </el-avatar>
+                  <div class="user-info">
+                    <span class="user-name">{{ row.userName || '未设置昵称' }}</span>
+                    <span class="user-account">@{{ row.userAccount }}</span>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="角色" width="120" align="center">
+              <template #default="{ row }">
+                <span class="status-dot" :class="row.userRole === 'admin' ? 'danger' : 'primary'"></span>
+                <span class="status-text">{{ row.userRole === 'admin' ? '管理员' : '普通用户' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="userProfile" label="简介" min-width="200" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span class="profile-text">{{ row.userProfile || '—' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="创建时间" width="180" align="center">
+              <template #default="{ row }">
+                <span class="time-cell">{{ formatTime(row.createTime) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="140" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" text :icon="Edit" @click="openEdit(row)">编辑</el-button>
+                <el-button size="small" text type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
+              </template>
+            </el-table-column>
 
-        <!-- 分页 -->
+            <template #empty>
+              <div class="empty-state">
+                <el-icon :size="40" color="#c9cdd4"><UserFilled /></el-icon>
+                <p class="empty-title">暂无用户数据</p>
+                <p class="empty-desc">点击右上角「新增用户」开始添加</p>
+              </div>
+            </template>
+          </el-table>
+        </div>
+
         <div class="pagination-wrapper">
           <el-pagination
             v-model:current-page="pageNum"
@@ -92,7 +130,7 @@
             @current-change="loadList"
           />
         </div>
-      </el-card>
+      </div>
 
       <!-- 新增/编辑对话框 -->
       <el-dialog
@@ -147,7 +185,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Search, Refresh, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Search, Refresh, Edit, Delete, User, UserFilled, Lock } from '@element-plus/icons-vue'
 import { userApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 
@@ -329,23 +367,159 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.user-manage-page {
-  padding: 20px;
-}
-.search-card {
-  margin-bottom: 16px;
-}
-.search-form {
+.page-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 18px;
 }
+
+.page-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.toolbar {
+  padding: 16px 20px;
+  margin: 0;
+  border-bottom: 1px solid var(--border-2);
+  background: #fbfcfd;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+
+.toolbar-left {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-input {
+  width: 200px;
+}
+
+.role-select {
+  width: 130px;
+}
+
+.table-wrap {
+  padding: 4px 12px 8px;
+}
+
+/* 用户单元格 */
+.cell-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.user-avatar {
+  background: linear-gradient(135deg, #165dff 0%, #6366f1 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-account {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* 状态点 */
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.status-dot.primary {
+  background: #165dff;
+  box-shadow: 0 0 0 3px rgba(22, 93, 255, 0.12);
+}
+
+.status-dot.danger {
+  background: #f53f3f;
+  box-shadow: 0 0 0 3px rgba(245, 63, 63, 0.12);
+}
+
+.status-text {
+  font-size: 12px;
+  color: var(--text-2);
+  vertical-align: middle;
+}
+
+.profile-text {
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.time-cell {
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 空态 */
+.empty-state {
+  padding: 64px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+  margin-top: 8px;
+}
+
+.empty-desc {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
 .pagination-wrapper {
-  margin-top: 16px;
+  padding: 12px 20px 16px;
+  margin: 0;
+  border-top: 1px solid var(--border-2);
   display: flex;
   justify-content: flex-end;
-}
-:deep(.el-table__row:hover > td) {
-  background-color: #f5f7fa !important;
 }
 </style>

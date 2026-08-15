@@ -97,9 +97,12 @@ CREATE TABLE IF NOT EXISTS corpus (
     projectId               BIGINT NOT NULL COMMENT '所属项目ID',
     title                   VARCHAR(256) COMMENT '语料标题',
     content                 MEDIUMTEXT NOT NULL COMMENT '语料文本内容',
-    source                  VARCHAR(128) COMMENT '来源: manual/file/api',
-    filePath                VARCHAR(512) COMMENT '文件路径（预留MinIO）',
-    status                  TINYINT DEFAULT 0 COMMENT '0-待使用 1-抽取中 2-已使用',
+    source                  VARCHAR(128) COMMENT '来源: manual(文本输入)/file(文档上传)',
+    filePath                VARCHAR(512) COMMENT '文件路径（MinIO URL）',
+    fileType                VARCHAR(32) COMMENT '文件类型: pdf/docx',
+    mineruTaskId            VARCHAR(128) COMMENT 'MinerU 任务ID',
+    errorMsg                VARCHAR(512) COMMENT '解析失败原因',
+    status                  TINYINT DEFAULT 0 COMMENT '0-处理中 1-已完成 2-失败',
     createBy                BIGINT COMMENT '上传人ID',
     createTime              DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updateTime              DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -107,6 +110,17 @@ CREATE TABLE IF NOT EXISTS corpus (
     INDEX idx_projectId (projectId),
     INDEX idx_status (status)
 ) COMMENT '语料表' COLLATE = utf8mb4_unicode_ci;
+
+-- 已有数据库迁移：为 corpus 表添加新字段
+ALTER TABLE corpus ADD COLUMN IF NOT EXISTS fileType VARCHAR(32) COMMENT '文件类型: pdf/docx' AFTER filePath;
+ALTER TABLE corpus ADD COLUMN IF NOT EXISTS mineruTaskId VARCHAR(128) COMMENT 'MinerU 任务ID' AFTER fileType;
+ALTER TABLE corpus ADD COLUMN IF NOT EXISTS errorMsg VARCHAR(512) COMMENT '解析失败原因' AFTER mineruTaskId;
+ALTER TABLE corpus MODIFY COLUMN status TINYINT DEFAULT 0 COMMENT '0-处理中 1-已完成 2-失败';
+ALTER TABLE corpus MODIFY COLUMN source VARCHAR(128) COMMENT '来源: manual(文本输入)/file(文档上传)';
+
+-- 数据迁移：旧的文本语料（source 为 manual 或空）状态统一改为"已完成"
+UPDATE corpus SET source = 'manual' WHERE source IS NULL OR source NOT IN ('manual', 'file');
+UPDATE corpus SET status = 1 WHERE source = 'manual' AND status = 0;
 
 -- 抽取任务表
 CREATE TABLE IF NOT EXISTS extraction_task (

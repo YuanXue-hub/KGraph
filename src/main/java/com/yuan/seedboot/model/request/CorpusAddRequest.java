@@ -23,9 +23,19 @@ public class CorpusAddRequest implements Serializable {
     private String content;
 
     /**
-     * 来源: manual/file/api
+     * 来源: manual(文本输入)/file(文档上传)
      */
     private String source;
+
+    /**
+     * 文件路径（MinIO URL，文档上传时必填）
+     */
+    private String filePath;
+
+    /**
+     * 文件类型: pdf/docx
+     */
+    private String fileType;
 
     private static final long serialVersionUID = 1L;
 }

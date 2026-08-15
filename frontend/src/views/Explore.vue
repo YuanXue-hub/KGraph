@@ -1,149 +1,166 @@
 <template>
   <div class="explore-page">
-    <!-- 左侧: 控制面板 -->
-    <div class="explore-left">
-      <div class="left-header">
-        <span class="left-title">图谱探索</span>
+    <!-- 顶部页面头 -->
+    <div class="page-head">
+      <div class="page-head-left">
+        <h2 class="page-title">图谱探索</h2>
+        <span class="page-subtitle">交互式浏览节点与关系，双击节点可展开邻居</span>
       </div>
-      <div class="left-body">
-        <div class="control-group">
-          <label class="control-label">选择模型</label>
-          <el-select
-            v-model="modelId"
-            placeholder="选择图谱模型"
-            filterable
-            style="width: 100%"
-            @change="onModelChange"
-          >
-            <el-option-group
-              v-for="g in modelGrouped"
-              :key="g.projectId"
-              :label="g.projectName"
+    </div>
+
+    <!-- 三栏主体 -->
+    <div class="explore-body">
+      <!-- 左侧: 控制面板 -->
+      <aside class="explore-left kg-card">
+        <div class="panel-header">
+          <span class="panel-title">控制面板</span>
+        </div>
+        <div class="left-body">
+          <div class="control-group">
+            <label class="control-label">选择模型</label>
+            <el-select
+              v-model="modelId"
+              placeholder="选择图谱模型"
+              filterable
+              style="width: 100%"
+              @change="onModelChange"
             >
-              <el-option
-                v-for="m in g.models"
-                :key="m.id"
-                :label="m.modelName"
-                :value="m.id"
-              />
-            </el-option-group>
-          </el-select>
-        </div>
-
-        <div class="control-group">
-          <label class="control-label">搜索节点</label>
-          <el-input
-            v-model="keyword"
-            placeholder="输入关键词搜索"
-            clearable
-            @keyup.enter="handleSearch"
-          >
-            <template #append>
-              <el-button :icon="Search" @click="handleSearch" />
-            </template>
-          </el-input>
-        </div>
-
-        <el-divider content-position="left">统计信息</el-divider>
-
-        <div class="stat-list" v-if="stats">
-          <div class="stat-item">
-            <el-icon color="#409eff"><Coin /></el-icon>
-            <span class="stat-label">节点数</span>
-            <span class="stat-value">{{ stats.nodeCount ?? 0 }}</span>
+              <el-option-group
+                v-for="g in modelGrouped"
+                :key="g.projectId"
+                :label="g.projectName"
+              >
+                <el-option
+                  v-for="m in g.models"
+                  :key="m.id"
+                  :label="m.modelName"
+                  :value="m.id"
+                />
+              </el-option-group>
+            </el-select>
           </div>
-          <div class="stat-item">
-            <el-icon color="#67c23a"><Connection /></el-icon>
-            <span class="stat-label">关系数</span>
-            <span class="stat-value">{{ stats.relationCount ?? 0 }}</span>
+
+          <div class="control-group">
+            <label class="control-label">搜索节点</label>
+            <el-input
+              v-model="keyword"
+              placeholder="输入关键词搜索"
+              clearable
+              @keyup.enter="handleSearch"
+            >
+              <template #append>
+                <el-button :icon="Search" @click="handleSearch" />
+              </template>
+            </el-input>
           </div>
-        </div>
 
-        <div ref="pieRef" class="pie-chart" v-if="hasTypeDist"></div>
+          <div class="section-divider">
+            <span class="section-divider-text">统计信息</span>
+          </div>
 
-        <el-empty v-if="!stats" description="选择模型后查看统计" :image-size="60" />
-
-        <el-divider content-position="left">操作提示</el-divider>
-        <ul class="tips">
-          <li>单击节点/关系：查看属性</li>
-          <li>双击节点：展开邻居</li>
-          <li>滚轮：缩放图谱</li>
-          <li>拖拽：移动画布/节点</li>
-        </ul>
-      </div>
-    </div>
-
-    <!-- 中间: 图谱可视化 -->
-    <div class="explore-center">
-      <div class="graph-toolbar">
-        <span class="graph-title">图谱可视化</span>
-        <div>
-          <el-button size="small" :icon="Refresh" @click="reloadGraph">重新加载</el-button>
-          <el-button size="small" :icon="FullScreen" @click="fitView">适应画布</el-button>
-        </div>
-      </div>
-      <div ref="graphRef" class="graph-canvas" v-loading="graphLoading"></div>
-      <el-empty v-if="!modelId" description="请先选择模型" class="graph-empty" />
-    </div>
-
-    <!-- 右侧: 属性详情面板 -->
-    <div class="explore-detail" :class="{ 'detail-collapsed': !selectedItem }">
-      <div class="detail-header">
-        <span class="detail-title">{{ detailTitle }}</span>
-        <el-button
-          v-if="selectedItem"
-          size="small"
-          :icon="Close"
-          link
-          @click="clearSelection"
-        />
-      </div>
-      <div class="detail-body" v-if="selectedItem">
-        <!-- 类型徽章 -->
-        <div class="detail-section">
-          <div class="detail-section-title">类型</div>
-          <el-tag
-            :color="selectedItem.color"
-            effect="dark"
-            size="large"
-            class="detail-type-tag"
-          >
-            {{ selectedItem.type || selectedItem.label || '未知' }}
-          </el-tag>
-        </div>
-
-        <!-- 名称/标签 -->
-        <div class="detail-section" v-if="selectedItem.name">
-          <div class="detail-section-title">名称</div>
-          <div class="detail-name">{{ selectedItem.name }}</div>
-        </div>
-
-        <!-- 属性列表 -->
-        <div class="detail-section">
-          <div class="detail-section-title">属性</div>
-          <div class="detail-props" v-if="detailProps.length">
-            <div class="detail-prop-row" v-for="prop in detailProps" :key="prop.key">
-              <span class="detail-prop-key">{{ prop.key }}</span>
-              <span class="detail-prop-value" :title="prop.value">{{ prop.value }}</span>
+          <div class="stat-list" v-if="stats">
+            <div class="stat-item">
+              <el-icon class="stat-icon stat-icon--node"><Coin /></el-icon>
+              <span class="stat-label">节点数</span>
+              <span class="stat-value">{{ stats.nodeCount ?? 0 }}</span>
+            </div>
+            <div class="stat-item">
+              <el-icon class="stat-icon stat-icon--edge"><Connection /></el-icon>
+              <span class="stat-label">关系数</span>
+              <span class="stat-value">{{ stats.relationCount ?? 0 }}</span>
             </div>
           </div>
-          <el-empty v-else description="无属性" :image-size="40" />
-        </div>
 
-        <!-- 关系特有：端点信息 -->
-        <template v-if="selectedItem.kind === 'edge'">
-          <div class="detail-section">
-            <div class="detail-section-title">起点</div>
-            <div class="detail-endpoint">{{ selectedItem.sourceName || selectedItem.source }}</div>
+          <div ref="pieRef" class="pie-chart" v-if="hasTypeDist"></div>
+
+          <el-empty v-if="!stats" description="选择模型后查看统计" :image-size="60" />
+
+          <div class="section-divider">
+            <span class="section-divider-text">操作提示</span>
           </div>
-          <div class="detail-section">
-            <div class="detail-section-title">终点</div>
-            <div class="detail-endpoint">{{ selectedItem.targetName || selectedItem.target }}</div>
+          <ul class="tips">
+            <li>单击节点/关系：查看属性</li>
+            <li>双击节点：展开邻居</li>
+            <li>滚轮：缩放图谱</li>
+            <li>拖拽：移动画布/节点</li>
+          </ul>
+        </div>
+      </aside>
+
+      <!-- 中间: 图谱可视化 -->
+      <section class="explore-center kg-card">
+        <div class="panel-header">
+          <span class="panel-title">图谱可视化</span>
+          <div class="panel-actions">
+            <el-button size="small" :icon="Refresh" @click="reloadGraph">重新加载</el-button>
+            <el-button size="small" :icon="FullScreen" @click="fitView">适应画布</el-button>
           </div>
-        </template>
-      </div>
-      <div class="detail-empty" v-else>
-        <el-empty description="点击节点或关系查看详情" :image-size="80" />
+        </div>
+        <div class="graph-wrap">
+          <div ref="graphRef" class="graph-canvas" v-loading="graphLoading"></div>
+          <el-empty v-if="!modelId" description="请先选择模型" class="graph-empty" />
+        </div>
+      </section>
+
+      <!-- 右侧详情面板：absolute 定位 + transform 过渡，避免挤压画布 -->
+      <div class="explore-detail" :class="{ 'detail-collapsed': !selectedItem }">
+        <div class="detail-header">
+          <span class="detail-title">{{ detailTitle }}</span>
+          <el-button
+            v-if="selectedItem"
+            size="small"
+            :icon="Close"
+            link
+            @click="clearSelection"
+          />
+        </div>
+        <div class="detail-body" v-if="selectedItem">
+          <!-- 类型徽章 -->
+          <div class="detail-section">
+            <div class="detail-section-title">类型</div>
+            <el-tag
+              :color="selectedItem.color"
+              effect="dark"
+              size="large"
+              class="detail-type-tag"
+            >
+              {{ selectedItem.type || selectedItem.label || '未知' }}
+            </el-tag>
+          </div>
+
+          <!-- 名称/标签 -->
+          <div class="detail-section" v-if="selectedItem.name">
+            <div class="detail-section-title">名称</div>
+            <div class="detail-name">{{ selectedItem.name }}</div>
+          </div>
+
+          <!-- 属性列表 -->
+          <div class="detail-section">
+            <div class="detail-section-title">属性</div>
+            <div class="detail-props" v-if="detailProps.length">
+              <div class="detail-prop-row" v-for="prop in detailProps" :key="prop.key">
+                <span class="detail-prop-key">{{ prop.key }}</span>
+                <span class="detail-prop-value" :title="prop.value">{{ prop.value }}</span>
+              </div>
+            </div>
+            <el-empty v-else description="无属性" :image-size="40" />
+          </div>
+
+          <!-- 关系特有：端点信息 -->
+          <template v-if="selectedItem.kind === 'edge'">
+            <div class="detail-section">
+              <div class="detail-section-title">起点</div>
+              <div class="detail-endpoint">{{ selectedItem.sourceName || selectedItem.source }}</div>
+            </div>
+            <div class="detail-section">
+              <div class="detail-section-title">终点</div>
+              <div class="detail-endpoint">{{ selectedItem.targetName || selectedItem.target }}</div>
+            </div>
+          </template>
+        </div>
+        <div class="detail-empty" v-else>
+          <el-empty description="点击节点或关系查看详情" :image-size="80" />
+        </div>
       </div>
     </div>
   </div>
@@ -587,28 +604,108 @@ onBeforeUnmount(() => {
 <style scoped>
 .explore-page {
   display: flex;
+  flex-direction: column;
   height: 100%;
+  background: var(--bg-page);
+  overflow: hidden;
+}
+
+/* 顶部页面头 */
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 16px 20px 14px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-2);
+  flex-shrink: 0;
+}
+
+.page-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-1);
+  letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.page-title::before {
+  content: '';
+  width: 4px;
+  height: 20px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-primary) 0%, var(--brand-accent) 100%);
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: var(--text-3);
+  font-weight: 400;
+  padding-left: 14px;
+}
+
+/* 三栏主体 */
+.explore-body {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 通用面板头 */
+.panel-header {
+  padding: 12px 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-primary) 0%, var(--brand-accent) 100%);
+}
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
 }
 
 /* 左侧控制面板 */
 .explore-left {
-  width: 280px;
-  background: #fff;
-  border-right: 1px solid #e6e8eb;
+  width: 288px;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
   z-index: 2;
-}
-
-.left-header {
-  padding: 16px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.left-title {
-  font-weight: 600;
-  font-size: 15px;
 }
 
 .left-body {
@@ -624,44 +721,123 @@ onBeforeUnmount(() => {
 .control-label {
   display: block;
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.65);
+  color: var(--text-2);
   margin-bottom: 6px;
   font-weight: 500;
 }
 
+/* 分节分隔 */
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 12px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.section-divider::before {
+  content: '';
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-primary), var(--brand-accent));
+}
+
+.section-divider-text {
+  white-space: nowrap;
+}
+
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-2);
+}
+
+/* 统计 */
 .stat-list {
-  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
 .stat-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  font-size: 14px;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  font-size: 13px;
+  transition: all var(--t-fast);
+}
+
+.stat-item:hover {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary-soft);
+  transform: translateY(-1px);
+}
+
+.stat-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.stat-icon--node {
+  color: var(--brand-primary);
+}
+
+.stat-icon--edge {
+  color: #67c23a;
 }
 
 .stat-label {
   flex: 1;
-  color: rgba(0, 0, 0, 0.65);
+  color: var(--text-2);
 }
 
 .stat-value {
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--text-1);
   font-size: 16px;
 }
 
 .pie-chart {
   width: 100%;
   height: 220px;
+  margin-top: 8px;
 }
 
+/* 提示 */
 .tips {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
-  line-height: 1.8;
-  padding-left: 16px;
+  color: var(--text-3);
+  line-height: 1.9;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tips li {
+  position: relative;
+  padding-left: 14px;
+}
+
+.tips li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 10px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  opacity: 0.55;
 }
 
 /* 中间图谱区域 */
@@ -670,28 +846,22 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   position: relative;
-  background: #fafafa;
   min-width: 0;
   overflow: hidden;
 }
 
-.graph-toolbar {
-  padding: 12px 16px;
-  background: #fff;
-  border-bottom: 1px solid #f0f0f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.graph-title {
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.88);
+.graph-wrap {
+  flex: 1;
+  position: relative;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(22, 93, 255, 0.05) 0%, transparent 42%),
+    radial-gradient(circle at 78% 78%, rgba(99, 102, 241, 0.05) 0%, transparent 42%),
+    var(--bg-soft);
+  overflow: hidden;
+  min-height: 0;
 }
 
 .graph-canvas {
-  flex: 1;
   width: 100%;
   height: 100%;
 }
@@ -703,26 +873,35 @@ onBeforeUnmount(() => {
   transform: translate(-50%, -50%);
 }
 
-/* 右侧详情面板 —— flex 挤压布局，展开时压缩中间画布 */
+/* 右侧详情面板 —— absolute 定位 + transform 过渡，避免挤压画布 */
 .explore-detail {
-  width: 320px;
-  flex-shrink: 0;
-  background: #fff;
-  border-left: 1px solid #e6e8eb;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  bottom: 12px;
+  width: 340px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  z-index: 5;
+  transform: translateX(0);
+  transition: transform var(--t-base), box-shadow var(--t-base);
 }
 
-.detail-collapsed {
-  width: 0;
-  border-left: none;
-  display: none;
+.explore-detail.detail-collapsed {
+  transform: translateX(calc(100% + 24px));
+  box-shadow: none;
+  pointer-events: none;
 }
 
 .detail-header {
-  padding: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 14px 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border-2);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -730,9 +909,20 @@ onBeforeUnmount(() => {
 }
 
 .detail-title {
-  font-weight: 600;
   font-size: 15px;
-  color: rgba(0, 0, 0, 0.88);
+  font-weight: 600;
+  color: var(--text-1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-primary), var(--brand-accent));
 }
 
 .detail-body {
@@ -749,45 +939,55 @@ onBeforeUnmount(() => {
 }
 
 .detail-section {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .detail-section-title {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+  color: var(--text-3);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   margin-bottom: 8px;
   font-weight: 600;
 }
 
 .detail-type-tag {
-  border: none;
-  font-size: 14px;
-  padding: 6px 16px;
-  height: auto;
+  border: none !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 5px 14px !important;
+  height: auto !important;
+  line-height: 1.5 !important;
+  border-radius: var(--r-sm) !important;
 }
 
 .detail-name {
-  font-size: 18px;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.88);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-1);
   word-break: break-all;
+  line-height: 1.4;
 }
 
 .detail-props {
-  background: #fafafa;
-  border-radius: 6px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
   overflow: hidden;
 }
 
 .detail-prop-row {
   display: flex;
-  padding: 8px 12px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-2);
   font-size: 13px;
   align-items: flex-start;
   gap: 12px;
+  transition: background var(--t-fast);
+}
+
+.detail-prop-row:hover {
+  background: var(--brand-primary-soft);
 }
 
 .detail-prop-row:last-child {
@@ -795,25 +995,28 @@ onBeforeUnmount(() => {
 }
 
 .detail-prop-key {
-  color: rgba(0, 0, 0, 0.45);
-  min-width: 80px;
+  color: var(--text-3);
+  min-width: 88px;
   flex-shrink: 0;
   font-weight: 500;
+  font-size: 12px;
 }
 
 .detail-prop-value {
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--text-1);
   word-break: break-all;
   flex: 1;
+  font-weight: 500;
 }
 
 .detail-endpoint {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.88);
+  font-size: 13px;
+  color: var(--text-1);
   font-weight: 500;
-  background: #fafafa;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-2);
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: var(--r-md);
   word-break: break-all;
 }
 </style>

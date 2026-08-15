@@ -69,17 +69,7 @@
         <!-- 空态：欢迎页 -->
         <div v-if="messages.length === 0" class="chat-empty">
           <div class="empty-logo">
-            <svg viewBox="0 0 48 48" width="48" height="48" fill="none">
-              <defs>
-                <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stop-color="#4F6BFF"/>
-                  <stop offset="50%" stop-color="#6A5CFF"/>
-                  <stop offset="100%" stop-color="#8B5CF6"/>
-                </linearGradient>
-              </defs>
-              <rect x="4" y="4" width="40" height="40" rx="12" fill="url(#lg1)"/>
-              <path d="M18 16h12M18 22h8M18 28h10M15 34h18a1 1 0 0 0 1-1V15a1 1 0 0 0-1-1h-9l-4-4h-5a1 1 0 0 0-1 1v23a1 1 0 0 0 1 1z" fill="#fff" opacity="0.95"/>
-            </svg>
+            <KgLogo :size="56" />
           </div>
           <h1 class="empty-title">你好，我是 KGraph 助手</h1>
           <p class="empty-subtitle">我可以基于选定的知识图谱，帮你查询实体、关系及统计信息。</p>
@@ -297,6 +287,7 @@ import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { projectApi, modelApi } from '@/api'
 import { marked } from 'marked'
+import KgLogo from '@/components/KgLogo.vue'
 
 // ========== 类型定义 ==========
 interface ToolCall {

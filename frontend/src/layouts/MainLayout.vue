@@ -2,44 +2,7 @@
   <el-container class="main-layout">
     <el-aside :width="isCollapse ? '64px' : '220px'" class="aside">
       <div class="logo">
-        <svg class="logo-icon" viewBox="0 0 32 32" :width="isCollapse ? 28 : 24" :height="isCollapse ? 28 : 24">
-          <defs>
-            <radialGradient id="kgNodeGrad" cx="35%" cy="35%">
-              <stop offset="0%" stop-color="#4e5969" />
-              <stop offset="100%" stop-color="#1d2129" />
-            </radialGradient>
-            <radialGradient id="kgCenterGrad" cx="35%" cy="35%">
-              <stop offset="0%" stop-color="#4080ff" />
-              <stop offset="100%" stop-color="#165dff" />
-            </radialGradient>
-          </defs>
-          <!-- 连线：六边形网络 -->
-          <g stroke="#a9aeb8" stroke-width="0.5" opacity="0.6" fill="none">
-            <line x1="16" y1="16" x2="25" y2="16" />
-            <line x1="16" y1="16" x2="20.5" y2="8.2" />
-            <line x1="16" y1="16" x2="11.5" y2="8.2" />
-            <line x1="16" y1="16" x2="7" y2="16" />
-            <line x1="16" y1="16" x2="11.5" y2="23.8" />
-            <line x1="16" y1="16" x2="20.5" y2="23.8" />
-            <line x1="25" y1="16" x2="20.5" y2="8.2" />
-            <line x1="20.5" y1="8.2" x2="11.5" y2="8.2" />
-            <line x1="11.5" y1="8.2" x2="7" y2="16" />
-            <line x1="7" y1="16" x2="11.5" y2="23.8" />
-            <line x1="11.5" y1="23.8" x2="20.5" y2="23.8" />
-            <line x1="20.5" y1="23.8" x2="25" y2="16" />
-          </g>
-          <!-- 外围节点：立体渐变球 -->
-          <g fill="url(#kgNodeGrad)">
-            <circle cx="25" cy="16" r="1.8" />
-            <circle cx="20.5" cy="8.2" r="1.8" />
-            <circle cx="11.5" cy="8.2" r="1.8" />
-            <circle cx="7" cy="16" r="1.8" />
-            <circle cx="11.5" cy="23.8" r="1.8" />
-            <circle cx="20.5" cy="23.8" r="1.8" />
-          </g>
-          <!-- 中心节点：蓝色立体球 -->
-          <circle cx="16" cy="16" r="2.5" fill="url(#kgCenterGrad)" />
-        </svg>
+        <KgLogo :size="isCollapse ? 28 : 24" />
         <span v-show="!isCollapse" class="logo-text">KGraph</span>
       </div>
       <el-menu
@@ -134,7 +97,7 @@
             <Fold v-if="!isCollapse" />
             <Expand v-else />
           </el-icon>
-          <span class="system-name">知识图谱管理系统</span>
+          <span class="header-greeting">{{ greeting }}</span>
         </div>
         <div class="header-right">
           <el-dropdown @command="handleCommand">
@@ -171,6 +134,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import KgLogo from '@/components/KgLogo.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -178,6 +142,16 @@ const userStore = useUserStore()
 const isCollapse = ref(false)
 
 const activeMenu = computed(() => route.path)
+
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  let period = '早上好'
+  if (h >= 12 && h < 14) period = '中午好'
+  else if (h >= 14 && h < 18) period = '下午好'
+  else if (h >= 18 || h < 6) period = '晚上好'
+  const name = userStore.userInfo?.userName || userStore.userInfo?.userAccount || ''
+  return name ? `${period}，${name}` : period
+})
 
 const avatarText = computed(() => {
   const name = userStore.userInfo?.userName || userStore.userInfo?.userAccount || 'U'
@@ -211,8 +185,20 @@ async function handleCommand(command: string) {
 .aside {
   background-color: #fafbfc;
   border-right: 1px solid #f0f2f5;
-  transition: width 0.28s;
+  transition: width 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
+  position: relative;
+}
+
+/* 侧边栏右侧细分割线（更精致） */
+.aside::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent 0%, #e5e6eb 20%, #e5e6eb 80%, transparent 100%);
 }
 
 .logo {
@@ -220,15 +206,29 @@ async function handleCommand(command: string) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   border-bottom: 1px solid #f0f2f5;
+  position: relative;
+}
+
+.logo::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e5e6eb 30%, #e5e6eb 70%, transparent);
 }
 
 .logo-text {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 700;
-  letter-spacing: 2px;
-  color: #1d2129;
+  letter-spacing: 1.5px;
+  background: linear-gradient(135deg, #1d2129 0%, #165dff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .logo-icon {
@@ -238,6 +238,7 @@ async function handleCommand(command: string) {
 .side-menu {
   border-right: none;
   background-color: transparent;
+  padding: 8px 0;
 }
 
 .side-menu:not(.el-menu--collapse) {
@@ -249,14 +250,17 @@ async function handleCommand(command: string) {
   color: #4e5969;
   height: 44px;
   line-height: 44px;
-  margin: 2px 8px;
-  border-radius: 8px;
+  margin: 2px 10px;
+  border-radius: 10px;
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :deep(.el-menu-item .el-icon) {
   font-size: 15px;
   margin-right: 8px;
   color: #a9aeb8;
+  transition: color 0.2s;
 }
 
 :deep(.el-menu-item:hover) {
@@ -271,11 +275,25 @@ async function handleCommand(command: string) {
 :deep(.el-menu-item.is-active) {
   background-color: #e8f3ff !important;
   color: #165dff !important;
-  font-weight: 500;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(22, 93, 255, 0.1);
 }
 
 :deep(.el-menu-item.is-active .el-icon) {
   color: #165dff;
+}
+
+/* 激活态左侧指示条 */
+:deep(.el-menu-item.is-active)::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, #165dff 0%, #6366f1 100%);
 }
 
 /* 子菜单标题 */
@@ -283,14 +301,16 @@ async function handleCommand(command: string) {
   color: #4e5969;
   height: 44px;
   line-height: 44px;
-  margin: 2px 8px;
-  border-radius: 8px;
+  margin: 2px 10px;
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 :deep(.el-sub-menu__title .el-icon) {
   font-size: 15px;
   margin-right: 8px;
   color: #a9aeb8;
+  transition: color 0.2s;
 }
 
 :deep(.el-sub-menu__title:hover) {
@@ -304,7 +324,7 @@ async function handleCommand(command: string) {
 
 :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
   color: #165dff;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 :deep(.el-sub-menu.is-active > .el-sub-menu__title .el-icon) {
@@ -319,8 +339,9 @@ async function handleCommand(command: string) {
 /* 折叠态弹出菜单 */
 :deep(.el-menu--popup) {
   background-color: #fafbfc;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 21, 41, 0.1);
+  padding: 6px;
 }
 
 /* 折叠状态下图标居中 */
@@ -335,7 +356,19 @@ async function handleCommand(command: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.04);
+  position: relative;
+  z-index: 10;
+}
+
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e6e8eb 15%, #e6e8eb 85%, transparent);
 }
 
 .header-left {
@@ -348,16 +381,21 @@ async function handleCommand(command: string) {
   font-size: 20px;
   cursor: pointer;
   color: #5a5e66;
+  padding: 6px;
+  border-radius: 8px;
+  transition: all 0.2s;
 }
 
 .collapse-btn:hover {
   color: #165dff;
+  background: #e8f3ff;
 }
 
-.system-name {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1d2129;
+.header-greeting {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+  letter-spacing: 0.3px;
 }
 
 .header-right {
@@ -370,13 +408,20 @@ async function handleCommand(command: string) {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  padding: 0 8px;
-  height: 60px;
+  padding: 6px 12px;
+  height: 44px;
+  border-radius: 10px;
+  transition: all 0.2s;
+}
+
+.user-info:hover {
+  background: #f2f3f5;
 }
 
 .user-name {
   font-size: 14px;
   color: #303133;
+  font-weight: 500;
 }
 
 .main {

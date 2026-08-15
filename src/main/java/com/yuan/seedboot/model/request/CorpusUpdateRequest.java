@@ -22,5 +22,10 @@ public class CorpusUpdateRequest implements Serializable {
      */
     private String content;
 
+    /**
+     * 来源: manual/file
+     */
+    private String source;
+
     private static final long serialVersionUID = 1L;
 }

@@ -7,6 +7,7 @@ import com.yuan.seedboot.model.entity.User;
 import com.yuan.seedboot.model.request.CorpusAddRequest;
 import com.yuan.seedboot.model.request.CorpusQueryRequest;
 import com.yuan.seedboot.model.request.CorpusUpdateRequest;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * @description 针对表【corpus(语料)】的数据库操作Service
@@ -14,9 +15,19 @@ import com.yuan.seedboot.model.request.CorpusUpdateRequest;
 public interface CorpusService extends IService<Corpus> {
 
     /**
-     * 新增语料
+     * 新增语料（文本输入，创建即完成）
      */
     Corpus addCorpus(CorpusAddRequest request, User loginUser);
+
+    /**
+     * 上传文档创建语料（异步调用 MinerU 解析）
+     */
+    Corpus uploadCorpus(MultipartFile file, Long projectId, String title, User loginUser);
+
+    /**
+     * 重新解析文档语料
+     */
+    boolean reparseCorpus(Long id);
 
     /**
      * 编辑语料

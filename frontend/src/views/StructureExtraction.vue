@@ -1,10 +1,16 @@
 <template>
+  <div class="structure-page">
   <ExtractionLayout
     theme-color="#e6a23c"
     config-title="抽取配置"
     result-title="数据预览与结果"
     history-title="抽取历史记录"
   >
+    <template #page-head>
+      <h2 class="page-title">结构化抽取</h2>
+      <p class="page-subtitle">基于结构化文件与字段映射规则，批量抽取实体与关系</p>
+    </template>
+
     <!-- 抽取配置面板头部右侧：上传文件按钮 -->
     <template #config-extra>
       <el-upload
@@ -314,6 +320,7 @@
       </div>
     </template>
   </ExtractionLayout>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -769,6 +776,7 @@ onMounted(() => {
   font-weight: 500;
 }
 
+/* ============ 结果区与配置区精修 ============ */
 .result-extra-bar {
   display: flex;
   align-items: center;
@@ -776,7 +784,14 @@ onMounted(() => {
 }
 
 .ext-form :deep(.el-divider--horizontal) {
-  margin: 16px 0;
+  margin: 18px 0;
+}
+
+.ext-form :deep(.el-divider__text) {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg-card);
 }
 
 .ext-stat-tags {
@@ -792,13 +807,24 @@ onMounted(() => {
 
 .ext-section-title {
   font-size: 14px;
-  color: rgba(0, 0, 0, 0.88);
-  margin-bottom: 8px;
+  color: var(--text-1);
+  margin-bottom: 10px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ext-section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-primary), var(--brand-accent));
 }
 
 .ext-preview-box {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .ext-result-box {
@@ -809,16 +835,6 @@ onMounted(() => {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
-}
-
-.upload-tip {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
-  margin-top: 4px;
-}
-
-.file-info {
-  margin-top: 12px;
 }
 
 .mapping-section {
@@ -834,27 +850,37 @@ onMounted(() => {
 
 .mapping-block {
   padding: 16px;
-  background: #ffffff;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
   margin-bottom: 12px;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.mapping-block:hover {
+  border-color: var(--border-1);
+  box-shadow: var(--shadow-1);
 }
 
 .mapping-block-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .mapping-index {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--text-1);
 }
 
 .prop-mappings {
-  margin: 8px 0;
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-1);
+  border-radius: var(--r-sm);
 }
 
 .prop-row {
@@ -864,22 +890,27 @@ onMounted(() => {
   margin-bottom: 8px;
 }
 
+.prop-row:last-child {
+  margin-bottom: 0;
+}
+
 .arrow-icon {
-  color: rgba(0, 0, 0, 0.25);
+  color: var(--text-4);
   flex-shrink: 0;
 }
 
 .json-preview-card {
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  background: var(--bg-card);
   overflow: hidden;
+  box-shadow: var(--shadow-1);
 }
 
 .json-preview-tabs {
   padding: 10px 12px;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafafa;
+  border-bottom: 1px solid var(--border-2);
+  background: var(--bg-soft);
 }
 
 .json-preview-body {
@@ -890,7 +921,7 @@ onMounted(() => {
   font-family: 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.7;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--text-1);
   white-space: pre-wrap;
   word-break: break-all;
 }

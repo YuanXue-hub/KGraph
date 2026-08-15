@@ -33,7 +33,6 @@
       <div v-show="activeView === 'list'" class="view-list" v-loading="modelLoading">
         <el-table
           :data="models"
-          border
           style="width: 100%"
           highlight-current-row
           @current-change="onModelRowChange"
@@ -1234,44 +1233,60 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid #e6e8eb;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border-2);
   flex-shrink: 0;
+  position: relative;
+  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+}
+
+.model-topbar::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-1) 15%, var(--border-1) 85%, transparent);
 }
 
 .topbar-tabs {
   display: flex;
   gap: 4px;
+  background: var(--border-2);
+  padding: 3px;
+  border-radius: 10px;
 }
 
 .tab-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
-  border-radius: 6px;
+  padding: 7px 16px;
+  border-radius: 7px;
   cursor: pointer;
-  font-size: 14px;
-  color: #606266;
-  transition: all 0.2s;
+  font-size: 13px;
+  color: var(--text-2);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  font-weight: 500;
 }
 
 .tab-btn:hover {
-  background: #f5f7fa;
-  color: #409eff;
+  color: var(--brand-primary);
 }
 
 .tab-btn.active {
-  background: #ecf5ff;
-  color: #409eff;
+  background: #fff;
+  color: var(--brand-primary);
   font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 21, 41, 0.08);
 }
 
 /* 内容区 */
 .model-content {
   flex: 1;
   overflow: auto;
-  padding: 16px 20px;
+  padding: 18px 24px;
 }
 
 .view-list {
@@ -1283,16 +1298,20 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #e8f3ff 0%, #eef0ff 100%);
+  border-radius: var(--r-md);
+  border: 1px solid #dbe9ff;
 }
 
 .view-back-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--brand-primary);
 }
 
-/* 对象及属性管理 — Ant Design 风格 */
+/* 对象及属性管理 — 精致双面板 */
 .object-layout {
   display: flex;
   gap: 16px;
@@ -1302,66 +1321,83 @@ onMounted(() => {
 .entity-panel {
   flex: 1;
   min-width: 0;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
   display: flex;
   flex-direction: column;
   background: #fff;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-1);
+  transition: box-shadow 0.24s var(--ease);
+}
+
+.entity-panel:hover,
+.property-panel:hover {
+  box-shadow: var(--shadow-2);
 }
 
 .property-panel {
   flex: 1;
   min-width: 0;
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
   display: flex;
   flex-direction: column;
   background: #fff;
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-1);
+  transition: box-shadow 0.24s var(--ease);
 }
 
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-2);
   flex-shrink: 0;
-  background: #fafafa;
-  border-radius: 8px 8px 0 0;
+  background: #fafbfc;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
 }
 
 .panel-title {
   font-weight: 600;
   font-size: 14px;
-  color: #1f1f1f;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: var(--text-1);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-primary) 0%, var(--brand-accent) 100%);
 }
 
 .panel-subtitle-inline {
   font-weight: 400;
   font-size: 13px;
-  color: #8c8c8c;
+  color: var(--text-3);
   margin-left: 4px;
 }
 
 .panel-search {
   padding: 12px 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-2);
   flex-shrink: 0;
 }
 
 .panel-pagination {
   padding: 8px 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-2);
   display: flex;
   justify-content: flex-end;
   align-items: center;
   flex-shrink: 0;
-  background: #fafafa;
+  background: #fafbfc;
 }
 
 .entity-info-bar {
@@ -1369,8 +1405,8 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: #fafafa;
-  border-bottom: 1px solid #f0f0f0;
+  background: #fafbfc;
+  border-bottom: 1px solid var(--border-2);
   flex-shrink: 0;
 }
 
@@ -1393,52 +1429,35 @@ onMounted(() => {
   height: 100%;
 }
 
-/* Ant Design 风格表格深度覆盖 */
+/* 双面板表格深度覆盖 */
 .object-layout :deep(.el-table) {
-  --el-table-border-color: #f0f0f0;
-  --el-table-header-bg-color: #fafafa;
-  --el-table-header-text-color: #1f1f1f;
-  --el-table-row-hover-bg-color: #f5f5f5;
-  --el-table-current-row-bg-color: #e6f4ff;
-  --el-table-text-color: #1f1f1f;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --el-table-border-color: var(--border-2);
+  --el-table-header-bg-color: #fafbfc;
+  --el-table-header-text-color: var(--text-2);
+  --el-table-row-hover-bg-color: #f7f9fc;
+  --el-table-current-row-bg-color: #e8f3ff;
+  --el-table-text-color: var(--text-1);
 }
 
 .object-layout :deep(.el-table th.el-table__cell) {
   font-weight: 600;
   font-size: 13px;
-  background: #fafafa;
-  border-bottom: 1px solid #f0f0f0;
+  background: #fafbfc;
+  border-bottom: 1px solid var(--border-1);
 }
 
 .object-layout :deep(.el-table td.el-table__cell) {
   font-size: 13px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-2);
 }
 
 .object-layout :deep(.el-table .current-row td.el-table__cell) {
-  background: #e6f4ff !important;
+  background: #e8f3ff !important;
 }
 
-/* Ant Design 风格按钮 */
-.object-layout :deep(.el-button--primary) {
-  --el-button-bg-color: #1677ff;
-  --el-button-border-color: #1677ff;
-  --el-button-hover-bg-color: #4096ff;
-  --el-button-hover-border-color: #4096ff;
-  --el-button-active-bg-color: #0958d9;
-  --el-button-active-border-color: #0958d9;
-}
-
-/* Ant Design 风格分页器 */
-.object-layout :deep(.el-pagination.is-background .el-pager li.is-active) {
-  background: #1677ff;
-}
-
-.object-layout :deep(.el-pagination.is-background .btn-prev),
-.object-layout :deep(.el-pagination.is-background .btn-next),
-.object-layout :deep(.el-pagination.is-background .el-pager li) {
-  border-radius: 6px;
+/* 模型列表表格去边框 */
+.view-list :deep(.el-table) {
+  border-radius: var(--r-md);
 }
 
 /* 复制模型弹窗 */
@@ -1455,16 +1474,27 @@ onMounted(() => {
 .copy-section-title {
   font-weight: 600;
   font-size: 14px;
-  color: #303133;
+  color: var(--text-1);
   margin-bottom: 16px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.copy-section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-primary) 0%, var(--brand-accent) 100%);
 }
 
 /* 关系管理属性展开 */
 .props-panel {
   padding: 12px 24px;
-  background: #fafafa;
+  background: #fafbfc;
 }
 
 .props-toolbar {
@@ -1476,7 +1506,8 @@ onMounted(() => {
 
 .props-title {
   font-weight: 600;
-  color: #606266;
+  color: var(--text-2);
+  font-size: 13px;
 }
 
 /* 空状态 */

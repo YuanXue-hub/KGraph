@@ -324,8 +324,23 @@ export const relationNeo4jApi = {
 
 /* ============ 语料 ============ */
 export const corpusApi = {
-  add(data: { projectId: number; title: string; content: string; source?: string }) {
+  add(data: { projectId: number; title: string; content: string }) {
     return request({ url: '/corpus/add', method: 'post', data })
+  },
+  upload(file: File, projectId: number, title?: string) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('projectId', String(projectId))
+    if (title) formData.append('title', title)
+    return request({
+      url: '/corpus/upload',
+      method: 'post',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  reparse(id: number) {
+    return request({ url: '/corpus/reparse', method: 'post', data: { id } })
   },
   update(data: { id: number; title: string; content: string }) {
     return request({ url: '/corpus/update', method: 'post', data })
