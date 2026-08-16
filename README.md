@@ -10,6 +10,7 @@
 
 展示系统总览：项目/模型/实体/抽取任务统计、核心功能矩阵、最近抽取任务列表。
 ![系统首页](assets/images/系统首页.png)
+![首页看板](assets/%E9%A6%96%E9%A1%B5%E7%9C%8B%E6%9D%BF-1.png)
 ### 图谱探索
 
 基于 AntV G6 的交互式图谱可视化，支持节点拖拽、缩放、双击展开邻居、单击查看属性。三栏布局：左侧控制面板、中间画布、右侧节点详情（点击节点时挤压中间图谱区域，关闭详情恢复原宽）。
@@ -26,9 +27,9 @@ KOS 抽取页面：左侧配置区（项目/模型选择、语料来源、11 项
 ### LLM抽取
 LLM抽取页面：抽取配置（实体关系配置、抽取配置）、抽取结果展示。
 
-### 智能问答（流式输出 · DeepSeek 风格 UI）
+### 智能问答（流式输出）
 
-对话式知识查询页面：参考 DeepSeek 官网的极简界面布局，支持 LLM 思维链流式展示、工具调用卡片透明层、正式回答逐字打字机效果。基于 LangGraph Agent + 图谱工具（搜索实体、获取详情、关系查询、图谱统计、按类型查询实体等）+ SSE 全链路流式推送。
+对话式知识查询页面：极简界面布局，支持 LLM 思维链流式展示、工具调用卡片透明层、正式回答逐字打字机效果。基于 LangGraph Agent + 图谱工具（搜索实体、获取详情、关系查询、图谱统计、按类型查询实体等）+ SSE 全链路流式推送。
 ![智能问答](assets/images/智能问答.png)
 
 
@@ -60,7 +61,7 @@ KGraph 是一个面向知识图谱构建与管理的全栈系统，覆盖从知�
 - **实体关系管理**：CRUD 操作，分页展示
 - **模型训练**：训练任务管理、曲线监控、模型效果评估
 - **数据标注**：标注任务管理，支持 BIO 标签体系
-- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 6 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`get_entities_by_type`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① DeepSeek 风格思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
+- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 6 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`get_entities_by_type`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① 思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
 - **文本切分**（规划中）：MinerU 解析后的长 Markdown 文本将按结构/滑动窗口切分为 chunk 存储，防止 LLM 抽取时上下文窗口超限
 
 ---
@@ -115,7 +116,7 @@ KGraph/
 │   │       ├── platform/        # 平台管理
 │   │       ├── Home.vue         # 首页
 │   │       ├── Explore.vue      # 图谱探索
-│   │       ├── Chat.vue         # ⭐ 智能问答（流式 + DeepSeek UI）
+│   │       ├── Chat.vue         # ⭐ 智能问答（流式）
 │   │       ├── Extraction.vue   # LLM 抽取
 │   │       ├── KosExtraction.vue# KOS 抽取
 │   │       ├── DlExtraction.vue # 深度学习抽取
@@ -414,7 +415,7 @@ Java 主服务
 
 ### 智能问答（LangGraph Agent · SSE 流式）
 
-智能问答模块实现了 **Python FastAPI（LangGraph Agent） → Java Spring Boot（WebFlux SSE 代理） → 前端 Vue3（打字机渲染）** 的全链路流式传输，参考 DeepSeek 官网视觉风格设计 UI。
+智能问答模块实现了 **Python FastAPI（LangGraph Agent） → Java Spring Boot（WebFlux SSE 代理） → 前端 Vue3（打字机渲染）** 的全链路流式传输。
 
 #### 1. 事件类型与 SSE 协议
 
@@ -434,7 +435,7 @@ Python 后端通过 `StreamingResponse` 发出标准 SSE 帧（`Cache-Control: n
 - **Java 端**：`ChatServiceImpl` 使用 `ParameterizedTypeReference<ServerSentEvent<String>>` 声明类型，WebFlux `bodyToFlux` 逐事件透传，`maxInMemorySize` 禁用缓冲。
 - **前端端**：`Chat.vue` 维护 3 条 **缓冲队列 + 定时器**（`flusherThinking`/`flusherTool`/`flusherAnswer`），以 ~30ms 间隔从队列 pop 一个字符追加到 DOM，实现「思考/工具/回答」三路独立打字机。**Markdown 通过 marked 解析为 HTML，支持代码块高亮、链接、列表、表格**。
 
-#### 3. UI 视觉（DeepSeek 风格）
+#### 3. UI 视觉
 
 - 整体布局：左侧深色侧边栏（模型选择、会话切换、发送按钮）+ 右侧浅色对话区（气泡 + 卡片）
 - 思考面板：`.thinking-step` 紫色边框 + 浅紫渐变底，展开/收起动画
