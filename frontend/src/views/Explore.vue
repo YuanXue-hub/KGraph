@@ -1,14 +1,6 @@
 <template>
   <div class="explore-page">
-    <!-- 顶部页面头 -->
-    <div class="page-head">
-      <div class="page-head-left">
-        <h2 class="page-title">图谱探索</h2>
-        <span class="page-subtitle">交互式浏览节点与关系，双击节点可展开邻居</span>
-      </div>
-    </div>
-
-    <!-- 三栏主体 -->
+    <!-- 顶部工具栏 -->
     <div class="explore-body">
       <!-- 左侧: 控制面板 -->
       <aside class="explore-left kg-card">
@@ -102,7 +94,7 @@
         </div>
       </section>
 
-      <!-- 右侧详情面板：absolute 定位 + transform 过渡，避免挤压画布 -->
+      <!-- 右侧详情面板：flex 布局参与流，展开时挤压中间图谱，收起时恢复 -->
       <div class="explore-detail" :class="{ 'detail-collapsed': !selectedItem }">
         <div class="detail-header">
           <span class="detail-title">{{ detailTitle }}</span>
@@ -573,13 +565,17 @@ function handleResize() {
   if (pieChart) pieChart.resize()
 }
 
-// 节点详情面板展开/收起时，立即调整图谱画布尺寸（无 CSS 过渡，无需延迟）
+// 节点详情面板展开/收起时，等待 CSS 过渡结束后调整图谱画布尺寸
 watch(selectedItem, () => {
   if (!graph || !graphRef.value) return
-  nextTick(() => {
-    if (graph && graphRef.value) {
-      graph.changeSize(graphRef.value.offsetWidth, graphRef.value.offsetHeight)
-    }
+  // 过渡过程中持续同步几次，结束后最终修正
+  const steps = [60, 140, 260]
+  steps.forEach((delay) => {
+    setTimeout(() => {
+      if (graph && graphRef.value) {
+        graph.changeSize(graphRef.value.offsetWidth, graphRef.value.offsetHeight)
+      }
+    }, delay)
   })
 })
 
@@ -873,13 +869,11 @@ onBeforeUnmount(() => {
   transform: translate(-50%, -50%);
 }
 
-/* 右侧详情面板 —— absolute 定位 + transform 过渡，避免挤压画布 */
+/* 右侧详情面板 —— flex 布局参与流，展开时挤压中间图谱 */
 .explore-detail {
-  position: absolute;
-  right: 12px;
-  top: 12px;
-  bottom: 12px;
   width: 340px;
+  max-width: 40%;
+  flex-shrink: 0;
   background: var(--bg-card);
   border: 1px solid var(--border-2);
   border-radius: var(--r-lg);
@@ -887,14 +881,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  z-index: 5;
-  transform: translateX(0);
-  transition: transform var(--t-base), box-shadow var(--t-base);
+  transition: width var(--t-base), opacity var(--t-base);
 }
 
 .explore-detail.detail-collapsed {
-  transform: translateX(calc(100% + 24px));
+  width: 0;
+  border: none;
   box-shadow: none;
+  opacity: 0;
   pointer-events: none;
 }
 

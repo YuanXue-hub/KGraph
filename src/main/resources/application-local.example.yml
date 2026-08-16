@@ -51,6 +51,11 @@ minio:
   secret-key: your-secret-key
   bucket: kgraph
 
+# MinerU 文档解析服务配置（PDF/Word → Markdown）
+# 启动方式：mineru-api --port 8000
+mineru:
+  base-url: http://localhost:8000
+
 server:
   port: 8888
   servlet:

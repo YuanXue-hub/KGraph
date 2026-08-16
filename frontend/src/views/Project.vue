@@ -1,14 +1,5 @@
 <template>
   <div class="page-container">
-    <!-- 页面头部：标题 + 概要 -->
-    <div class="page-head">
-      <div class="page-head-left">
-        <h2 class="page-title">知识图谱管理</h2>
-        <span class="page-subtitle">管理图谱项目、存储配置与模型归属</span>
-      </div>
-    </div>
-
-    <!-- 主体卡片 -->
     <div class="kg-card">
       <!-- 工具栏 -->
       <div class="toolbar">
@@ -40,7 +31,7 @@
           style="width: 100%"
           :header-cell-style="{ background: 'transparent' }"
         >
-          <el-table-column type="index" label="#" width="56" align="center" />
+          <el-table-column type="index" label="" width="56" align="center" />
           <el-table-column prop="projectName" label="项目名称" min-width="180">
             <template #default="{ row }">
               <div class="cell-project" @click="goModel(row)">
@@ -84,10 +75,10 @@
               <span class="time-cell">{{ formatTime(row.createTime) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="160" align="center" fixed="right">
+          <el-table-column label="操作" width="130" align="center" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" text :icon="Edit" @click="openEdit(row)">编辑</el-button>
-              <el-button size="small" text type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
+              <el-button size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
             </template>
           </el-table-column>
 

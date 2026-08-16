@@ -24,9 +24,10 @@ a {
 
 /* ==================== 设计令牌 ==================== */
 :root {
-  /* 品牌色 */
-  --brand-primary: #165dff;
-  --brand-primary-soft: #e8f3ff;
+  /* 品牌色（参考 DeepSeek 蓝紫色调） */
+  --brand-primary: #4d6bfe;
+  --brand-primary-hover: #6366f1;
+  --brand-primary-soft: #eef1ff;
   --brand-accent: #6366f1;
   --brand-accent-soft: #eef0ff;
 
@@ -196,7 +197,12 @@ a {
   font-size: 13px !important;
   color: var(--text-2) !important;
   border-bottom: 1px solid var(--border-2) !important;
-  padding: 10px 0 !important;
+  padding: 8px 0 !important;
+}
+
+/* 表格单元格内按钮组不换行 */
+.el-table .cell {
+  white-space: nowrap;
 }
 
 .el-table--border,
@@ -215,18 +221,19 @@ a {
 }
 
 .el-button--primary {
-  background: var(--brand-primary) !important;
-  border-color: var(--brand-primary) !important;
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-accent) 100%) !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 8px rgba(77, 107, 254, 0.25);
 }
 
 .el-button--primary:hover {
-  background: #4080ff !important;
-  border-color: #4080ff !important;
+  box-shadow: 0 4px 14px rgba(77, 107, 254, 0.4);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(22, 93, 255, 0.25);
 }
 
+/* 浅色系 default 按钮（参考 DeepSeek） */
 .el-button--default {
+  background: #fff !important;
   border-color: var(--border-1) !important;
   color: var(--text-2) !important;
 }
@@ -237,9 +244,34 @@ a {
   background: var(--brand-primary-soft) !important;
 }
 
+/* danger 浅色按钮 */
+.el-button--danger.el-button--small {
+  background: #fff !important;
+  border-color: #ffb3b3 !important;
+  color: #f56565 !important;
+}
+
+.el-button--danger.el-button--small:hover {
+  background: #fff0f0 !important;
+  border-color: #f56565 !important;
+  color: #f56565 !important;
+}
+
 .el-button--danger:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(245, 63, 63, 0.25);
+}
+
+/* small 普通按钮紧凑化，避免表格操作栏换行 */
+.el-button--small {
+  height: 28px !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+}
+
+.el-button--small .el-icon {
+  font-size: 13px !important;
+  margin-right: 2px;
 }
 
 /* 输入框：聚焦品牌色光晕 */

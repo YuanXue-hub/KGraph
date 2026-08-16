@@ -37,6 +37,7 @@
           highlight-current-row
           @current-change="onModelRowChange"
         >
+          <el-table-column type="index" label="" width="56" align="center" />
           <el-table-column prop="modelName" label="本体名称" min-width="160" />
           <el-table-column prop="modelDescription" label="模型描述" min-width="200" show-overflow-tooltip />
           <el-table-column label="版本号" width="90" align="center">
@@ -59,11 +60,11 @@
           <el-table-column label="更新时间" width="170" align="center">
             <template #default="{ row }">{{ formatTime(row.updateTime) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="220" align="center" fixed="right">
+          <el-table-column label="操作" width="190" align="center" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" link type="primary" @click="selectModelForManage(row)">管理</el-button>
-              <el-button size="small" link type="primary" @click="openCopyDialog(row)">复制</el-button>
-              <el-button size="small" link type="danger" @click="handleDelete(row)">删除</el-button>
+              <el-button size="small" @click="selectModelForManage(row)">管理</el-button>
+              <el-button size="small" @click="openCopyDialog(row)">复制</el-button>
+              <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -117,10 +118,10 @@
                       <el-tag size="small" type="info">{{ row.type || '未分类' }}</el-tag>
                     </template>
                   </el-table-column>
-                  <el-table-column label="操作" width="80" align="center">
+                  <el-table-column label="操作" width="130" align="center">
                     <template #default="{ row }">
-                      <el-button size="small" link type="primary" :icon="Edit" @click.stop="openEditNeoEntity(row)" />
-                      <el-button size="small" link type="danger" :icon="Delete" @click.stop="deleteNeoEntity(row)" />
+                      <el-button size="small" @click.stop="openEditNeoEntity(row)">编辑</el-button>
+                      <el-button size="small" type="danger" @click.stop="deleteNeoEntity(row)">删除</el-button>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -156,7 +157,7 @@
               <div v-if="selectedNeoEntity" class="entity-info-bar">
                 <el-tag size="small">名称：{{ selectedNeoEntity.name }}</el-tag>
                 <el-tag size="small" type="info">类型：{{ selectedNeoEntity.type || '未分类' }}</el-tag>
-                <el-button size="small" link type="primary" @click="openEditNeoEntity(selectedNeoEntity)">编辑实体</el-button>
+                <el-button size="small" @click="openEditNeoEntity(selectedNeoEntity)">编辑实体</el-button>
               </div>
               <div class="property-table-wrap" v-if="selectedNeoEntity">
                 <el-table
@@ -174,8 +175,8 @@
                   </el-table-column>
                   <el-table-column label="操作" width="130" align="center">
                     <template #default="{ row }">
-                      <el-button size="small" link type="primary" @click="openEditNeoProp(row)">编辑</el-button>
-                      <el-button size="small" link type="danger" @click="deleteNeoProp(row)">删除</el-button>
+                      <el-button size="small" @click="openEditNeoProp(row)">编辑</el-button>
+                      <el-button size="small" type="danger" @click="deleteNeoProp(row)">删除</el-button>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -234,9 +235,9 @@
                       <span>{{ row.targetName }}</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="操作" width="60" align="center">
+                  <el-table-column label="操作" width="80" align="center">
                     <template #default="{ row }">
-                      <el-button size="small" link type="danger" :icon="Delete" @click.stop="deleteNeoRelation(row)" />
+                      <el-button size="small" type="danger" @click.stop="deleteNeoRelation(row)">删除</el-button>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -289,8 +290,8 @@
                   </el-table-column>
                   <el-table-column label="操作" width="130" align="center">
                     <template #default="{ row }">
-                      <el-button size="small" link type="primary" @click="openEditNeoRelationProp(row)">编辑</el-button>
-                      <el-button size="small" link type="danger" @click="deleteNeoRelationProp(row)">删除</el-button>
+                      <el-button size="small" @click="openEditNeoRelationProp(row)">编辑</el-button>
+                      <el-button size="small" type="danger" @click="deleteNeoRelationProp(row)">删除</el-button>
                     </template>
                   </el-table-column>
                 </el-table>

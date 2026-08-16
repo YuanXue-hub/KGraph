@@ -38,11 +38,11 @@
         <el-sub-menu index="graph-manage">
           <template #title>
             <el-icon><Folder /></el-icon>
-            <span>图谱项目管理</span>
+            <span>图谱管理</span>
           </template>
           <el-menu-item index="/project">
             <el-icon><Files /></el-icon>
-            <span>知识图谱管理</span>
+            <span>图谱项目管理</span>
           </el-menu-item>
           <el-menu-item index="/model">
             <el-icon><Share /></el-icon>
@@ -130,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -143,7 +143,13 @@ const isCollapse = ref(false)
 
 const activeMenu = computed(() => route.path)
 
+// 触发问候语定时刷新的响应式时间戳
+const nowTick = ref(Date.now())
+let greetingTimer: ReturnType<typeof setInterval> | null = null
+
 const greeting = computed(() => {
+  // 依赖 nowTick 以便定时刷新
+  void nowTick.value
   const h = new Date().getHours()
   let period = '早上好'
   if (h >= 12 && h < 14) period = '中午好'
@@ -151,6 +157,20 @@ const greeting = computed(() => {
   else if (h >= 18 || h < 6) period = '晚上好'
   const name = userStore.userInfo?.userName || userStore.userInfo?.userAccount || ''
   return name ? `${period}，${name}` : period
+})
+
+onMounted(() => {
+  // 每 30 秒刷新一次问候语，确保跨时段时实时变化
+  greetingTimer = setInterval(() => {
+    nowTick.value = Date.now()
+  }, 30 * 1000)
+})
+
+onUnmounted(() => {
+  if (greetingTimer) {
+    clearInterval(greetingTimer)
+    greetingTimer = null
+  }
 })
 
 const avatarText = computed(() => {

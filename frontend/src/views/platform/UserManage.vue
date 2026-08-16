@@ -1,14 +1,6 @@
 <template>
   <div class="page-container user-manage-page">
-    <!-- 页面头部 -->
-    <div class="page-head">
-      <div class="page-head-left">
-        <h2 class="page-title">用户管理</h2>
-        <span class="page-subtitle">管理系统用户账号、角色与资料</span>
-      </div>
-    </div>
-
-    <!-- 无权限提示 -->
+    <!-- 工具栏 -->
     <div v-if="!isAdmin" class="kg-card">
       <div class="empty-state">
         <el-icon :size="44" color="#c9cdd4"><Lock /></el-icon>
@@ -73,6 +65,7 @@
             style="width: 100%"
             :header-cell-style="{ background: 'transparent' }"
           >
+            <el-table-column type="index" label="" width="56" align="center" />
             <el-table-column label="用户" min-width="220">
               <template #default="{ row }">
                 <div class="cell-user">
@@ -102,10 +95,10 @@
                 <span class="time-cell">{{ formatTime(row.createTime) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="140" align="center" fixed="right">
+            <el-table-column label="操作" width="130" align="center" fixed="right">
               <template #default="{ row }">
-                <el-button size="small" text :icon="Edit" @click="openEdit(row)">编辑</el-button>
-                <el-button size="small" text type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
+                <el-button size="small" @click="openEdit(row)">编辑</el-button>
+                <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
               </template>
             </el-table-column>
 

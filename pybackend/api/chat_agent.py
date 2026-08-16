@@ -29,8 +29,21 @@ SYSTEM_PROMPT = """你是一个知识图谱智能问答助手，可以查询知�
 2. 如果工具返回空结果，如实告知用户未找到相关信息
 3. 回答时列出具体的实体名称、类型和关系
 4. 回答简洁清晰，使用中文，避免冗余
-5. 每次最多调用 3 个工具，优先选择最相关的工具
-6. 如果用户的问题与图谱无关，可以直接用自己的知识回答"""
+
+工具使用策略（重要，必须严格遵守）：
+- 一次问答最多调用 3 次工具，达到 3 次后必须给出最终回答
+- 工具调用完成后，基于已有结果直接回答，不要继续调用工具"补充"或"验证"信息
+- 严禁用"让我继续搜索/查找/发现更多"等理由反复调用工具
+- 一次工具调用返回的结果足够回答问题时，立即给出最终回答
+
+工具选择指南：
+- 用户问"某类型有哪些实体"（如"人物有哪些""地点有什么"）→ 使用 get_entities_by_type
+- 用户搜索特定名称的实体 → 使用 search_entities
+- 用户问图谱整体情况 → 使用 get_graph_stats 或 list_entity_types
+- 用户问某个实体的详细信息 → 使用 get_entity_detail
+- 用户问某个实体的关系 → 使用 get_entity_relations
+
+如果用户的问题与图谱无关，可以直接用自己的知识回答。"""
 
 
 def _sse_event(event_type: str, data: Dict[str, Any]) -> str:
@@ -138,6 +151,7 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
 
         async for event in agent.astream_events(
             {"messages": [HumanMessage(content=user_message)]},
+            config={"recursion_limit": 50},
             version="v2",
         ):
             kind = event.get("event")

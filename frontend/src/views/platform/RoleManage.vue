@@ -1,14 +1,6 @@
 <template>
   <div class="page-container">
-    <!-- 页面头部 -->
-    <div class="page-head">
-      <div class="page-head-left">
-        <h2 class="page-title">角色管理</h2>
-        <span class="page-subtitle">管理系统角色、权限范围与用户归属</span>
-      </div>
-    </div>
-
-    <!-- 非管理员：无权限提示 -->
+    <!-- 工具栏 -->
     <div v-if="!userStore.isAdmin" class="kg-card">
       <div class="empty-state">
         <el-icon :size="44" color="#c9cdd4"><Lock /></el-icon>
@@ -81,6 +73,7 @@
             style="width: 100%"
             :header-cell-style="{ background: 'transparent' }"
           >
+            <el-table-column type="index" label="" width="56" align="center" />
             <el-table-column label="用户" min-width="220">
               <template #default="{ row }">
                 <div class="cell-user">
@@ -99,9 +92,9 @@
                 <span class="profile-text">{{ row.userProfile || '—' }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="center" fixed="right">
+            <el-table-column label="操作" width="150" align="center" fixed="right">
               <template #default="{ row }">
-                <el-button size="small" text :icon="Switch" @click="handleToggleRole(row)">
+                <el-button size="small" @click="handleToggleRole(row)">
                   切换为{{ oppositeRoleName }}
                 </el-button>
               </template>

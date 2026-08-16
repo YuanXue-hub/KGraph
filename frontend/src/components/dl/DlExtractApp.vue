@@ -10,7 +10,7 @@
                 <el-icon><Cpu /></el-icon>
                 抽取配置
               </span>
-              <el-button type="primary" size="small" :icon="Cpu" :loading="extracting" :disabled="!canExtract" @click="handleExtract" class="ext-btn-action">
+              <el-button type="primary" size="small" :loading="extracting" :disabled="!canExtract" @click="handleExtract" class="ext-btn-action">
                 开始抽取
               </el-button>
             </div>
@@ -265,7 +265,7 @@
                   </el-table-column>
                   <el-table-column label="操作" width="100" align="center">
                     <template #default="{ row }">
-                      <el-button size="small" link type="primary" @click="viewHistory(row)">查看</el-button>
+                      <el-button size="small" :icon="View" @click="viewHistory(row)">查看</el-button>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -284,7 +284,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Cpu, DataAnalysis, InfoFilled, Refresh } from '@element-plus/icons-vue'
+import { Cpu, DataAnalysis, InfoFilled, Refresh, View } from '@element-plus/icons-vue'
 import { projectApi, modelApi, corpusApi, extractionApi, trainTaskApi } from '@/api'
 
 interface Project { id: number | string; projectName: string }
@@ -772,34 +772,37 @@ onMounted(() => {
 }
 
 .corpus-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+  display: inline-flex;
+  gap: 4px;
+  background: var(--border-2);
+  padding: 2px;
+  border-radius: 6px;
+  margin-bottom: 8px;
 }
 
 .corpus-tab {
-  flex: 1;
-  text-align: center;
-  padding: 8px 0;
-  border: 1px solid #e5e6eb;
-  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
-  color: #4e5969;
-  background: #f7f8fa;
+  font-size: 12px;
+  color: var(--text-3);
+  background: transparent;
   transition: all 0.2s;
+  font-weight: 500;
 }
 
 .corpus-tab:hover {
-  border-color: #165dff;
   color: #165dff;
 }
 
 .corpus-tab.active {
-  background: #165dff;
-  border-color: #165dff;
-  color: #fff;
-  font-weight: 500;
+  background: #fff;
+  color: #165dff;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 21, 41, 0.08);
 }
 
 .corpus-content {

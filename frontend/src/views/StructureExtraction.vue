@@ -6,11 +6,6 @@
     result-title="数据预览与结果"
     history-title="抽取历史记录"
   >
-    <template #page-head>
-      <h2 class="page-title">结构化抽取</h2>
-      <p class="page-subtitle">基于结构化文件与字段映射规则，批量抽取实体与关系</p>
-    </template>
-
     <!-- 抽取配置面板头部右侧：上传文件按钮 -->
     <template #config-extra>
       <el-upload
@@ -216,7 +211,6 @@
 
         <el-button
           type="primary"
-          :icon="MagicStick"
           :loading="extracting"
           :disabled="!canExtract"
           @click="handleExtract"
@@ -311,7 +305,7 @@
         </el-table-column>
         <el-table-column label="操作" width="100" align="center">
           <template #default="{ row }">
-            <el-button size="small" link @click="viewHistory(row)">查看</el-button>
+            <el-button size="small" @click="viewHistory(row)">查看</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -327,7 +321,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
-import { Upload, Plus, Delete, MagicStick, Right, Refresh, Download } from '@element-plus/icons-vue'
+import { Upload, Plus, Delete, Right, Refresh, Download, View } from '@element-plus/icons-vue'
 import { projectApi, modelApi, extractionApi } from '@/api'
 import ExtractionLayout from '@/components/ExtractionLayout.vue'
 

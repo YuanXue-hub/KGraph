@@ -116,9 +116,9 @@
                 </template>
               </el-table-column>
               <el-table-column prop="sentenceIdx" label="所在句子" width="80" align="center" />
-              <el-table-column label="操作" width="70" align="center">
+              <el-table-column label="操作" width="90" align="center">
                 <template #default="{ $index }">
-                  <el-button size="small" link type="danger" @click="removeEntity($index)">删除</el-button>
+                  <el-button size="small" type="danger" :icon="Delete" @click="removeEntity($index)">删除</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -203,9 +203,9 @@
                 </template>
               </el-table-column>
               <el-table-column prop="tail" label="尾实体" min-width="100" />
-              <el-table-column label="操作" width="70" align="center">
+              <el-table-column label="操作" width="90" align="center">
                 <template #default="{ $index }">
-                  <el-button size="small" link type="danger" @click="removeRelation($index)">删除</el-button>
+                  <el-button size="small" type="danger" :icon="Delete" @click="removeRelation($index)">删除</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -255,7 +255,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Back, Check, Collection, Connection, Document, Download, InfoFilled, Plus, Refresh, Right } from '@element-plus/icons-vue'
+import { Back, Check, Collection, Connection, Document, Download, InfoFilled, Plus, Refresh, Right, Delete } from '@element-plus/icons-vue'
 import { annotationTaskApi, corpusApi, projectApi } from '@/api'
 
 interface Project { id: number | string; projectName: string }

@@ -1,11 +1,5 @@
 <template>
   <div class="dl-page">
-    <!-- 顶部页头 -->
-    <div class="page-head">
-      <h2 class="page-title">深度学习抽取</h2>
-      <p class="page-subtitle">数据标注 → 模型训练 → 抽取应用 → 模型效果，全流程深度学习知识抽取</p>
-    </div>
-
     <!-- 顶部 4 个 Tab 页签 -->
     <el-tabs v-model="activeTab" class="dl-tabs" type="card" @tab-change="onTabChange">
       <el-tab-pane label="数据标注" name="annotation">

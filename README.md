@@ -1,6 +1,6 @@
 # KGraph 知识图谱管理系统
 
-> 基于 Vue 3 + Spring Boot + FastAPI 的全栈知识图谱构建与管理平台，支持结构化抽取、KOS 抽取、深度学习抽取、LLM 抽取四种知识抽取方式，集成 Neo4j 图数据库与 G6 可视化。
+> 基于 Vue 3 + Spring Boot + FastAPI 的知识图谱构建、管理、训练和问答的一体式平台，支持通过 MinerU 解析 PDF/Word 文档构建语料（即将支持文本切分防 LLM 上下文超限），提供结构化抽取、KOS 抽取、深度学习抽取、LLM 抽取四种知识抽取方式，集成 Neo4j 图数据库与 G6 可视化。
 
 ---
 
@@ -9,34 +9,28 @@
 ### 首页 Dashboard
 
 展示系统总览：项目/模型/实体/抽取任务统计、核心功能矩阵、最近抽取任务列表。
-![系统首页](assets/%E7%B3%BB%E7%BB%9F%E9%A6%96%E9%A1%B5.png)
+![系统首页](assets/images/系统首页.png)
 ### 图谱探索
 
-基于 AntV G6 的交互式图谱可视化，支持节点拖拽、缩放、双击展开邻居、单击查看属性。三栏布局：左侧控制面板、中间画布、右侧节点详情。
-![图谱探索](assets/%E5%9B%BE%E8%B0%B1%E6%8E%A2%E7%B4%A2.png)
-
+基于 AntV G6 的交互式图谱可视化，支持节点拖拽、缩放、双击展开邻居、单击查看属性。三栏布局：左侧控制面板、中间画布、右侧节点详情（点击节点时挤压中间图谱区域，关闭详情恢复原宽）。
+![图谱探索](assets/images/图谱探索.png)
 ### 知识抽取（KOS 抽取）
 
 KOS 抽取页面：左侧配置区（项目/模型选择、语料来源、11 项 KOS 参数）+ 右侧结果区（实体列表、关系列表、历史记录）。
-![KOS抽取](assets/KOS%E6%8A%BD%E5%8F%96.png)
 
 ### 深度学习抽取 - 模型训练
 
 模型训练页面：训练任务列表、训练配置表单、训练曲线监控（Loss 曲线 + P/R/F1 曲线分图展示）。
-![模型训练](assets/%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83.png)
-
-![深度学习抽取](assets/%E6%B7%B1%E5%BA%A6%E5%AD%A6%E4%B9%A0%E6%8A%BD%E5%8F%96.png)
 
 ---
 ### LLM抽取
 LLM抽取页面：抽取配置（实体关系配置、抽取配置）、抽取结果展示。
-![LLM抽取](assets/LLM%E6%8A%BD%E5%8F%96.png)
 
 ### 智能问答（流式输出 · DeepSeek 风格 UI）
 
-对话式知识查询页面：参考 DeepSeek 官网的极简界面布局，支持 LLM 思维链流式展示、工具调用卡片透明层、正式回答逐字打字机效果。基于 LangGraph Agent + 图谱工具（搜索实体、获取详情、关系查询、图谱统计等）+ SSE 全链路流式推送。
+对话式知识查询页面：参考 DeepSeek 官网的极简界面布局，支持 LLM 思维链流式展示、工具调用卡片透明层、正式回答逐字打字机效果。基于 LangGraph Agent + 图谱工具（搜索实体、获取详情、关系查询、图谱统计、按类型查询实体等）+ SSE 全链路流式推送。
+![智能问答](assets/images/智能问答.png)
 
-![智能问答](assets/%E9%97%AE%E7%AD%94%E9%A1%B5%E9%9D%A2%E6%88%AA%E5%9B%BE.png)
 
 ## 项目简介
 
@@ -45,23 +39,29 @@ KGraph 是一个面向知识图谱构建与管理的全栈系统，覆盖从知�
 | 层级 | 技术栈 | 职责 |
 |------|--------|------|
 | 前端 | Vue 3 + Element Plus + Vite + TypeScript + marked（Markdown 渲染） | UI 交互、图可视化（G6）、图表展示（ECharts）、SSE 流式接收 + 打字机动效 |
-| Java 主服务 | Spring Boot + MyBatis-Plus + MySQL + Neo4j + MinIO + WebFlux（`Flux<ServerSentEvent>` SSE 代理） | 业务编排、权限管理、结构化抽取、图谱 CRUD、流式事件透传 |
+| Java 主服务 | Spring Boot + MyBatis-Plus + MySQL + Neo4j + MinIO + WebFlux（`Flux<ServerSentEvent>` SSE 代理） | 业务编排、权限管理、结构化抽取、图谱 CRUD、MinerU 文档解析调度、流式事件透传 |
 | Python 微服务 | FastAPI + OpenAI SDK + LangGraph（Agent 编排） + `StreamingResponse`（SSE） | LLM 抽取、KOS 抽取、深度学习抽取、模型训练、智能问答 Agent（流式工具调用） |
+| 外部服务 | MinerU v3.4.5（文档解析） | PDF/Word → Markdown 转换，独立进程运行 |
 
 ### 核心功能
 
 - **项目管理**：多项目隔离，每个项目可创建多个图谱模型
 - **本体建模**：自定义实体类型、关系类型、属性，支持多模型 schema 隔离
+- **语料管理**（含 MinerU 文档解析）：
+  - 文本输入：手动输入文本内容直接入库
+  - 文档上传：PDF/Word 上传到 MinIO，`@Async` 异步调用 MinerU 解析为 Markdown 入库，前端轮询感知解析状态
+  - 支持解析失败后重新触发解析
 - **知识抽取**（四种方式）：
   - 结构化抽取：Excel/CSV 字段映射
   - KOS 抽取：领域词表 + TF-IDF 统计 + 三层结构（范畴→概念→术语）
   - 深度学习抽取：词典匹配 + CRF 约束 + 规则细分（22 种实体类型）
   - LLM 抽取：Prompt 工程 + 大模型 API
-- **图谱探索**：G6 交互式可视化，节点拖拽/缩放/属性查看
+- **图谱探索**：G6 交互式可视化，三栏布局，点击节点挤压中间图谱区域展示详情
 - **实体关系管理**：CRUD 操作，分页展示
 - **模型训练**：训练任务管理、曲线监控、模型效果评估
 - **数据标注**：标注任务管理，支持 BIO 标签体系
-- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 6 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`list_relation_types`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① DeepSeek 风格思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
+- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 6 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`get_entities_by_type`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① DeepSeek 风格思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
+- **文本切分**（规划中）：MinerU 解析后的长 Markdown 文本将按结构/滑动窗口切分为 chunk 存储，防止 LLM 抽取时上下文窗口超限
 
 ---
 
@@ -178,7 +178,8 @@ KGraph/
 - MySQL 8+
 - Neo4j 5+
 - Redis 7+
-- MinIO
+- MinIO（语料文件存储）
+- MinerU v3.4.5（PDF/Word 文档解析，独立进程）
 
 ### 1. 克隆项目
 
@@ -198,19 +199,50 @@ mysql -u root -p seedboot < sql/kgraph.sql
 mysql -u root -p seedboot < sql/user.sql
 mysql -u root -p seedboot < sql/chat_history.sql
 mysql -u root -p seedboot < sql/log.sql
+
+# Neo4j 约束/索引（可选，提升查询性能并保证实体唯一性）
+# 将 sql/graph.sql 内容在 Neo4j Browser 中执行
 ```
 
-### 3. 配置 Java 主服务
+### 3. 启动 MinerU 文档解析服务
+
+MinerU 是独立的 Python 进程，提供 `/file_parse` HTTP 接口把 PDF/Word 转换为 Markdown。
+
+```bash
+# 安装 MinerU（详细步骤见官方文档）
+pip install -U magic-pdf[full]
+
+# 启动 API 服务（默认端口 8000）
+mineru-api --port 8000
+```
+
+服务启动在 `http://localhost:8000`，健康检查可访问 `http://localhost:8000/docs`。
+
+### 4. 配置 Java 主服务
 
 ```bash
 # 复制配置模板
 cp src/main/resources/application-local.example.yml src/main/resources/application-local.yml
 
-# 编辑配置，填入你的数据库、Neo4j、MinIO、LLM API Key
+# 编辑配置，填入你的数据库、Neo4j、MinIO、MinerU、LLM API Key
 vim src/main/resources/application-local.yml
 ```
 
-### 4. 启动 Java 主服务
+关键配置项：
+
+```yaml
+minio:
+  endpoint: http://localhost:9000
+  access-key: your-access-key
+  secret-key: your-secret-key
+  bucket: kgraph
+
+# MinerU 文档解析服务
+mineru:
+  base-url: http://localhost:8000
+```
+
+### 5. 启动 Java 主服务
 
 ```bash
 ./mvnw spring-boot:run
@@ -218,7 +250,7 @@ vim src/main/resources/application-local.yml
 
 服务启动在 `http://localhost:8888/api`
 
-### 5. 配置 Python 微服务
+### 6. 配置 Python 微服务
 
 ```bash
 cd pybackend
@@ -233,7 +265,7 @@ vim config.json
 pip install -r requirements.txt
 ```
 
-### 6. 启动 Python 微服务
+### 7. 启动 Python 微服务
 
 ```bash
 cd pybackend
@@ -242,7 +274,7 @@ python main.py
 
 服务启动在 `http://localhost:8001`
 
-### 7. 启动前端
+### 8. 启动前端
 
 ```bash
 cd frontend
@@ -269,6 +301,65 @@ npm run dev
 ---
 
 ## 核心功能说明
+
+### MinerU 文档解析（语料管理）
+
+语料管理模块支持两种入库方式：文本输入与文档上传。文档上传通过 MinerU v3.4.5 解析为 Markdown 入库，解决 PDF/Word 等非结构化文档的结构化抽取问题。
+
+#### 1. 整体流程
+
+```
+前端上传 PDF/Word
+     │
+     ▼
+Java 主服务
+  ├─ 上传文件到 MinIO（得到 fileUrl）
+  ├─ 创建 corpus 记录（source=file, status=0 处理中, filePath/fileType 写入）
+  └─ @Async 异步调用 MinerUService.parseCorpusAsync()
+            │
+            ▼
+       MinerUService
+         ├─ 从 MinIO 下载文件（MinIO SDK，避免 403）
+         ├─ 构建 multipart 请求（return_md=true）
+         ├─ 调用 MinerU /file_parse（10 分钟超时）
+         ├─ 解析响应：results.<filename>.md_content
+         └─ 更新 corpus：content=Markdown, status=1, errorMsg=null
+            （失败时 status=2，errorMsg 保留原因）
+            │
+            ▼
+       前端轮询 corpus 列表
+         └─ 根据 status 切换 UI 状态（处理中 / 已完成 / 失败）
+```
+
+#### 2. 关键设计
+
+- **异步处理**：`@Async` 注解让 MinerU 调用不阻塞上传接口，前端通过轮询感知解析状态
+- **MinIO SDK 下载**：直接使用 `minioClient.getObject()` 而非 HTTP URL，避免预签名 URL 的 403 鉴权问题
+- **响应格式兼容**：`extractMarkdown()` 同时兼容 MinerU v3.4.5（`results.<filename>.md_content`）、旧格式（`md` 字段）和纯文本三种返回结构
+- **失败可重试**：`CorpusController` 提供「重新解析」接口，对失败记录（status=2）再次触发 MinerU 调用
+- **预留 `mineruTaskId`**：当前为同步调用流程，字段已预留；未来接入 MinerU 异步任务接口时可填充任务 ID 实现进度跟踪
+
+#### 3. 数据模型（`corpus` 表关键字段）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `source` | VARCHAR(128) | 来源：`manual`（文本输入）/ `file`（文档上传） |
+| `filePath` | VARCHAR(512) | MinIO URL，仅 `source=file` 时有值 |
+| `fileType` | VARCHAR(32) | 文件类型：`pdf` / `docx` |
+| `mineruTaskId` | VARCHAR(128) | MinerU 任务ID（预留字段） |
+| `errorMsg` | VARCHAR(512) | 解析失败原因（成功时为 null） |
+| `status` | TINYINT | 0-处理中 1-已完成 2-失败 |
+| `content` | MEDIUMTEXT | 文本输入为原文；文件上传为 MinerU 解析后的 Markdown |
+
+### 文本切分（规划中）
+
+针对 MinerU 解析后的长 Markdown 文本，规划三层渐进式切分策略，防止 LLM 抽取时上下文窗口超限：
+
+1. **Markdown 结构切分**：按标题层级（`#`、`##`、`###`）切分为语义段落
+2. **滑动窗口切分**：对超长段落按 500 字符窗口 + 50 字符重叠切分，在句子边界处断开
+3. **语义切分**（可选）：基于嵌入向量相似度的边界优化
+
+切分结果存入 `corpus_chunk` 表，LLM 抽取时按 chunk 维度并发处理，最终聚合去重写入 Neo4j。`pybackend/text_processor/splitter.py` 已实现基础切分函数，待集成到抽取流程。
 
 ### 知识抽取
 
@@ -357,12 +448,12 @@ Python 后端通过 `StreamingResponse` 发出标准 SSE 帧（`Cache-Control: n
 |------|------|-------------|
 | `search_entities(keyword, modelId, limit)` | 按名称模糊搜索实体 | `WHERE n.name CONTAINS $kw` |
 | `get_entity_detail(entity_name, modelId)`  | 获取实体全部属性、标签、度 | `properties(n)` + `size((n)-[]-())` |
-| `get_entity_relations(entity_name, modelId, direction, relationType, limit)` | 查询实体的关系与邻居（支持出/入/双向、指定关系类型过滤） | `MATCH (n)-[r]-(m)` |
+| `get_entity_relations(name, modelId, limit)` | 查询实体的关系（作为头实体或尾实体） | `MATCH (a)-[r:RELATION]->(b)` 双向查询 |
 | `get_graph_stats(modelId)`                 | 返回实体数 / 关系数 / 各类 Top 10 | `COUNT` 聚合 + 多次 `UNWIND keys({…})` |
 | `list_entity_types(modelId)`               | 列出所有实体标签及数量 | `labels(n)` 聚合 |
-| `list_relation_types(modelId)`             | 列出所有关系类型及数量 | `type(r)` 聚合 |
+| `get_entities_by_type(entity_type, modelId, limit)` | 按实体类型查询实体列表（如「人物有哪些」「地点有什么」） | `MATCH (n:Entity {type: $type, modelId: $mid})` |
 
-> 提示：Agent 根据用户问题自主选择工具（支持多轮调用），例如「有哪些实体？」→ `search_entities`，「X 与谁有关？」→ `get_entity_relations`，「图谱里有什么统计信息？」→ `get_graph_stats`。
+> 提示：Agent 根据用户问题自主选择工具（支持多轮调用），例如「有哪些实体？」→ `search_entities`，「X 与谁有关？」→ `get_entity_relations`，「图谱里有什么统计信息？」→ `get_graph_stats`，「人物有哪些？」→ `get_entities_by_type`。同时通过 SYSTEM_PROMPT 约束工具调用上限（3 次）+ `recursion_limit=50` 兜底，避免 LangGraph 递归限制（默认 25 次）触发。
 
 ---
 
@@ -386,11 +477,18 @@ http://localhost:8001/docs
 
 ### Neo4j 多模型隔离
 
-每个图谱模型的实体和关系通过 `modelId` 字段隔离，Cypher 查询时通过 `WHERE n.modelId = $modelId` 过滤。
+每个图谱模型的实体和关系通过 `modelId` 字段隔离，Cypher 查询时通过 `WHERE n.modelId = $modelId` 过滤。约束 `(name, type, modelId)` 三元组唯一，避免不同模型间同名实体冲突。
 
 ### 关系类型存储
 
-Neo4j 关系使用固定的 relationship type（`RELATED`），业务关系名存储在 `relationType` 属性中，避免属性覆盖问题。
+Neo4j 关系使用固定的 relationship type（`RELATED` / `RELATION`），业务关系名存储在 `relationType` 属性中，避免属性覆盖问题。查询时优先读取 `relationType`，旧数据兼容 `type` 字段。
+
+### MinerU 文档解析集成
+
+- **MinIO SDK 直连下载**：Java 端通过 `minioClient.getObject()` 下载文件再交给 MinerU，绕开预签名 URL 的鉴权问题
+- **异步 + 轮询模式**：`@Async` 注解保证上传接口即时返回，前端轮询 corpus 列表感知解析状态
+- **响应格式兼容层**：`extractMarkdown()` 兼容 MinerU v3.4.5（`results.<filename>.md_content`）、旧版 `md` 字段、JSON 数组、纯文本四种返回结构
+- **失败重试**：失败记录（status=2）可通过重新解析接口再次触发 MinerU 调用
 
 ### 抽取任务记录
 

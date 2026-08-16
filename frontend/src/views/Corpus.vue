@@ -1,12 +1,5 @@
 <template>
   <div class="page-container">
-    <div class="page-head">
-      <div class="page-head-left">
-        <h2 class="page-title">语料管理</h2>
-        <span class="page-subtitle">管理抽取任务所用的文本语料库，支持文本输入与 PDF/Word 文档上传</span>
-      </div>
-    </div>
-
     <div class="kg-card">
       <!-- 工具栏 -->
       <div class="toolbar">
@@ -43,7 +36,7 @@
       <!-- 表格 -->
       <div class="table-wrap">
         <el-table v-loading="loading" :data="filteredList" style="width: 100%">
-          <el-table-column type="index" label="#" width="56" align="center" />
+          <el-table-column type="index" label="" width="56" align="center" />
           <el-table-column prop="title" label="标题" min-width="200">
             <template #default="{ row }">
               <div class="cell-corpus" @click="viewContent(row)">
@@ -80,36 +73,27 @@
               <span class="time-cell">{{ formatTime(row.createTime) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="220" align="center" fixed="right">
+          <el-table-column label="操作" width="260" align="center" fixed="right">
             <template #default="{ row }">
               <el-button
                 v-if="row.status === 1 || row.source !== 'file'"
                 size="small"
-                text
-                :icon="View"
                 @click="viewContent(row)"
               >查看</el-button>
               <el-button
                 v-if="row.status === 2"
                 size="small"
-                text
                 type="warning"
-                :icon="RefreshRight"
                 @click="handleReparse(row)"
               >重新解析</el-button>
               <el-button
                 v-if="row.status === 1 || row.source !== 'file'"
                 size="small"
-                text
-                type="primary"
-                :icon="Edit"
                 @click="openEdit(row)"
               >编辑</el-button>
               <el-button
                 size="small"
-                text
                 type="danger"
-                :icon="Delete"
                 @click="handleDelete(row)"
               >删除</el-button>
             </template>

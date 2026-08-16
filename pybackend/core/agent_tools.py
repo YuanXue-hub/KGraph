@@ -176,6 +176,31 @@ def list_entity_types(model_id: int) -> str:
     return f"当前图谱包含以下实体类型: {', '.join(types)}"
 
 
+@tool
+def get_entities_by_type(model_id: int, entity_type: str, limit: int = 50) -> str:
+    """按实体类型查询实体列表。当用户询问"某类型有哪些实体"（如"人物有哪些"、"地点有什么"）时使用此工具。"""
+    records = _query(
+        """
+        MATCH (n:Entity {modelId: $modelId, type: $entityType})
+        RETURN n.name AS name, properties(n) AS props
+        ORDER BY n.name
+        LIMIT $limit
+        """,
+        modelId=model_id,
+        entityType=entity_type,
+        limit=limit,
+    )
+    if not records:
+        return f"未找到类型为「{entity_type}」的实体。"
+    lines = [f"类型「{entity_type}」共有 {len(records)} 个实体（最多展示 {limit} 个）:"]
+    for r in records:
+        name = r.get("name", "")
+        props = {k: v for k, v in (r.get("props") or {}).items() if k not in ("modelId", "createTime", "name", "type")}
+        prop_str = ", ".join(f"{k}={v}" for k, v in props.items()) if props else ""
+        lines.append(f"- {name}" + (f"（{prop_str}）" if prop_str else ""))
+    return "\n".join(lines)
+
+
 # 全部工具列表
 ALL_TOOLS = [
     search_entities,
@@ -183,4 +208,5 @@ ALL_TOOLS = [
     get_entity_relations,
     get_graph_stats,
     list_entity_types,
+    get_entities_by_type,
 ]

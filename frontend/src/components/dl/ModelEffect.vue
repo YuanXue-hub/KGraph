@@ -127,7 +127,7 @@
           </el-col>
           <el-col :span="14">
             <el-table :data="typeStats" border size="small" class="type-table">
-              <el-table-column type="index" label="#" width="50" align="center" />
+              <el-table-column type="index" label="" width="50" align="center" />
               <el-table-column prop="type" label="实体类型" width="100">
                 <template #default="{ row }">
                   <el-tag :color="typeColorMap[row.type]" effect="dark" size="small">{{ row.type }}</el-tag>

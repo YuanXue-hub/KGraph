@@ -1,14 +1,6 @@
 <template>
   <div class="page-container profile-page">
-    <!-- 页面头部 -->
-    <div class="page-head">
-      <div class="page-head-left">
-        <h2 class="page-title">个人信息</h2>
-        <span class="page-subtitle">管理你的账户资料与安全设置</span>
-      </div>
-    </div>
-
-    <!-- 顶部用户卡片 -->
+    <!-- 内容区 -->
     <div class="kg-card user-card">
       <div class="user-card-banner">
         <div class="user-avatar-wrap">

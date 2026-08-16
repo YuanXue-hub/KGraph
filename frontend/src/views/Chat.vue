@@ -115,36 +115,15 @@
             class="msg-row"
             :class="msg.role"
           >
-            <!-- 用户消息（右对齐，气泡） -->
+            <!-- 用户消息（浅色底，无头像） -->
             <template v-if="msg.role === 'user'">
               <div class="user-bubble">
                 <div class="user-text">{{ msg.content }}</div>
               </div>
-              <div class="msg-avatar user-avatar">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                  <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4 0-8 2-8 6v2h16v-2c0-4-4-6-8-6z"/>
-                </svg>
-              </div>
             </template>
 
-            <!-- AI 消息（左对齐，无气泡，纯文字布局） -->
+            <!-- AI 消息（无气泡，无头像，纯文字布局） -->
             <template v-else>
-              <div class="msg-avatar ai-avatar">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <defs>
-                    <linearGradient id="ai-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stop-color="#4F6BFF"/>
-                      <stop offset="100%" stop-color="#8B5CF6"/>
-                    </linearGradient>
-                  </defs>
-                  <rect x="3" y="7" width="18" height="12" rx="3" fill="url(#ai-grad)" stroke="none"/>
-                  <circle cx="9" cy="13" r="1.2" fill="#fff"/>
-                  <circle cx="15" cy="13" r="1.2" fill="#fff"/>
-                  <path d="M10 16h4" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>
-                  <path d="M12 3v4M8 3v1M16 3v1" stroke="#6A5CFF" stroke-width="1.6" stroke-linecap="round"/>
-                </svg>
-              </div>
-
               <div class="ai-body">
                 <!-- 思考过程卡片（DeepSeek风格） -->
                 <div
@@ -931,39 +910,17 @@ watch(
   align-items: flex-start;
 }
 
-.msg-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-.user-avatar {
-  order: 2;
-  background: linear-gradient(135deg, #475569, #334155);
-  color: #ffffff;
-}
-.ai-avatar {
-  color: #fff;
-  background: transparent;
-  box-shadow: 0 2px 10px -3px rgba(79,107,255,0.4);
-}
-
-/* 用户气泡 */
-.user-bubble { order: 1; max-width: 72%; }
+/* 用户气泡（浅色底，DeepSeek 风格） */
+.user-bubble { max-width: 72%; }
 .user-text {
-  background: #111827;
-  color: #f9fafb;
+  background: #f3f4f6;
+  color: #1f2937;
   padding: 10px 16px;
-  border-radius: 16px 4px 16px 16px;
+  border-radius: 12px;
   font-size: 14.5px;
   line-height: 1.65;
   word-break: break-word;
   white-space: pre-wrap;
-  box-shadow: 0 2px 6px rgba(17,24,39,0.08);
 }
 
 /* AI 消息主体 */
