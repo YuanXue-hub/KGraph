@@ -10,14 +10,22 @@
       </div>
 
       <div class="sidebar-list">
-        <div v-if="messages.length > 0" class="session-item current">
+        <div
+          v-for="(s, i) in sessions"
+          :key="s.sessionId"
+          class="session-item"
+          :class="{ current: i === currentSessionIndex }"
+          @click="switchSession(i)"
+        >
           <div class="session-dot"></div>
-          <span class="session-title">
-            {{ messages[0]?.content?.slice(0, 24) || '新的对话' }}
-            {{ messages[0]?.content?.length > 24 ? '…' : '' }}
+          <span class="session-title">{{ s.title }}</span>
+          <span class="session-delete" @click.stop="deleteSession(i)" title="删除会话">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14zM10 11v6M14 11v6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
           </span>
         </div>
-        <div v-if="messages.length === 0" class="empty-sessions">
+        <div v-if="sessions.length === 0" class="empty-sessions">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M8 10h8M8 14h5M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -316,6 +324,15 @@ const quickDescs = [
 ]
 
 // ========== 响应式数据 ==========
+interface ChatSession {
+  sessionId: string
+  title: string
+  messages: Message[]
+  createdAt: number
+}
+
+const sessions = ref<ChatSession[]>([])
+const currentSessionIndex = ref(0)
 const messages = ref<Message[]>([])
 const inputText = ref('')
 const sending = ref(false)
@@ -323,6 +340,9 @@ const inputFocused = ref(false)
 const selectedModelId = ref<number>()
 const modelOptions = ref<{ label: string; value: number }[]>([])
 const messagesRef = ref<HTMLElement>()
+const sessionId = ref<string>()
+
+const currentSession = computed(() => sessions.value[currentSessionIndex.value])
 
 const canSend = computed(() => inputText.value.trim().length > 0 && selectedModelId.value !== undefined)
 
@@ -376,7 +396,7 @@ function stopTypewriter() {
 }
 
 function flushTypewriterFor(msg: Message) {
-  // 强制把缓冲全部刷到display，用于非流式兜底
+  // 先把缓冲刷到 display（非流式兜底）
   if (msg.thinkingBuffer) {
     msg.displayThinking += msg.thinkingBuffer
     msg.thinkingBuffer = ''
@@ -384,6 +404,16 @@ function flushTypewriterFor(msg: Message) {
   if (msg.contentBuffer) {
     msg.displayContent += msg.contentBuffer
     msg.contentBuffer = ''
+  }
+  // 无工具调用的直答场景：模型回答被流式归为 thinking → 迁移到正式回答区显示
+  if (msg.role === 'ai' && msg.thinking && !msg.content && msg.toolCalls.length === 0) {
+    const thinkText = msg.displayThinking || msg.thinking
+    if (thinkText) {
+      msg.content = thinkText
+      msg.displayContent = thinkText
+      msg.thinking = ''
+      msg.displayThinking = ''
+    }
   }
   // 刷完后立即标记阶段完成，确保UI状态同步
   msg.thinkDone = true
@@ -487,7 +517,144 @@ async function loadModels() {
 }
 
 function onModelChange() { /* no-op 模型切换不丢会话 */ }
-function newChat() { messages.value = [] }
+// ========== 会话管理 ==========
+async function createSession(): Promise<string | undefined> {
+  try {
+    const res = await fetch('/api/v1/chat/session/create', { method: 'POST', credentials: 'include' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    return data.sessionId
+  } catch (e) {
+    console.error('创建会话失败', e)
+  }
+}
+
+// 将当前 messages 浅拷贝保存到当前 session（断开引用，避免互相干扰）
+function saveMessagesToSession() {
+  const session = sessions.value[currentSessionIndex.value]
+  if (session) {
+    session.messages = [...messages.value]
+  }
+}
+
+async function newChat() {
+  // 仅当当前会话有消息时才保存（避免把空会话写入列表）
+  if (messages.value.length > 0) {
+    saveMessagesToSession()
+  } else if (sessions.value.length > 0 && currentSessionIndex.value >= 0) {
+    // 当前会话无消息（未发送过任何内容），直接复用，不重复创建
+    const cur = sessions.value[currentSessionIndex.value]
+    if (cur && cur.messages.length === 0 && cur.title === '新的对话') return
+  }
+  const sid = await createSession()
+  if (sid === undefined) return
+  // 新建会话项并插入列表顶部
+  const newSession: ChatSession = {
+    sessionId: sid,
+    title: '新的对话',
+    messages: [],
+    createdAt: Date.now(),
+  }
+  sessions.value.unshift(newSession)
+  currentSessionIndex.value = 0
+  // 直接赋值新数组（Vue 能正确检测引用变化并触发渲染）
+  messages.value = []
+  sessionId.value = sid
+}
+
+async function switchSession(index: number) {
+  if (index === currentSessionIndex.value || sending.value) return
+  // 保存当前会话消息（浅拷贝）
+  saveMessagesToSession()
+  // 切换到目标会话
+  currentSessionIndex.value = index
+  const target = sessions.value[index]
+  sessionId.value = target.sessionId
+  // 若本地已有消息缓存则直接展示，否则从后端加载历史消息
+  if (target.messages && target.messages.length > 0) {
+    messages.value = [...target.messages]
+  } else {
+    await loadSessionMessages(target)
+  }
+  await nextTick()
+  scrollToBottom()
+}
+
+// 从后端加载会话的完整历史消息（切换页面后恢复对话）
+async function loadSessionMessages(session: ChatSession) {
+  try {
+    const res = await fetch(`/api/v1/chat/session/${session.sessionId}/messages`, { credentials: 'include' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    const list: { role: string; content: string }[] = data.messages || []
+    session.messages = list.map(m => createEmptyMessage(m.role === 'user' ? 'user' : 'ai', m.content))
+    messages.value = [...session.messages]
+  } catch (e) {
+    console.error('加载会话消息失败', e)
+  }
+}
+
+// 加载当前用户的历史会话列表（进入智能问答页面时自动调用）
+async function loadHistorySessions() {
+  try {
+    const res = await fetch('/api/v1/chat/session/list', { credentials: 'include' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    const list: any[] = data.sessions || []
+    // 按最近活跃时间倒序转为会话项（标题取首条消息）
+    sessions.value = list.map(s => ({
+      sessionId: s.sessionId,
+      title: (s.firstMessage || '新的对话').length > 24 ? (s.firstMessage || '').slice(0, 24) + '…' : (s.firstMessage || '新的对话'),
+      messages: [],
+      createdAt: s.createdAt ? new Date(s.createdAt).getTime() : Date.now(),
+    }))
+    // 默认选中最近的一个会话并加载其消息
+    if (sessions.value.length > 0) {
+      currentSessionIndex.value = 0
+      sessionId.value = sessions.value[0].sessionId
+      await loadSessionMessages(sessions.value[0])
+    } else {
+      // 无历史会话则新建
+      await newChat()
+    }
+  } catch (e) {
+    console.error('加载历史会话失败', e)
+    await newChat()
+  }
+}
+
+// 删除会话（清除 Redis + MySQL 逻辑删除）
+async function deleteSession(index: number) {
+  const target = sessions.value[index]
+  if (!target) return
+  try {
+    const res = await fetch(`/api/v1/chat/session/${target.sessionId}`, { method: 'DELETE', credentials: 'include' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  } catch (e) {
+    console.error('删除会话失败', e)
+    ElMessage.error('删除会话失败')
+    return
+  }
+  // 从列表移除
+  sessions.value.splice(index, 1)
+  // 若删除的是当前会话，则切换到其他会话或新建
+  if (index === currentSessionIndex.value) {
+    if (sessions.value.length > 0) {
+      currentSessionIndex.value = 0
+      sessionId.value = sessions.value[0].sessionId
+      if (sessions.value[0].messages?.length) {
+        messages.value = [...sessions.value[0].messages]
+      } else {
+        await loadSessionMessages(sessions.value[0])
+      }
+    } else {
+      await newChat()
+    }
+  } else if (index < currentSessionIndex.value) {
+    currentSessionIndex.value--
+  }
+  ElMessage.success('会话已删除')
+}
 
 // ========== 业务：发送消息 + SSE 流式解析 ==========
 async function sendMessage(text?: string) {
@@ -504,6 +671,10 @@ async function sendMessage(text?: string) {
 
   // 用户消息
   addMessage('user', msg)
+  // 第一条消息更新会话标题
+  if (currentSession.value && currentSession.value.title === '新的对话') {
+    currentSession.value.title = msg.length > 24 ? msg.slice(0, 24) + '…' : msg
+  }
 
   // AI 占位消息
   const aiMsg = addMessage('ai')
@@ -513,11 +684,12 @@ async function sendMessage(text?: string) {
   try {
     const response = await fetch('/api/v1/chat/agent/stream', {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
       },
-      body: JSON.stringify({ message: msg, modelId: selectedModelId.value }),
+      body: JSON.stringify({ message: msg, modelId: selectedModelId.value, sessionId: sessionId.value }),
     })
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -643,6 +815,8 @@ async function sendMessage(text?: string) {
 // ========== 生命周期 ==========
 onMounted(() => {
   loadModels()
+  // 进入页面自动加载当前用户的历史会话（用户间隔离）
+  loadHistorySessions()
   startTypewriter()
 })
 
@@ -732,11 +906,24 @@ watch(
   box-shadow: 0 0 0 3px rgba(79,107,255,0.14);
 }
 .session-title {
+  flex: 1;
   font-size: 13.5px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.session-delete {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  border-radius: 5px;
+  color: #9ca3af;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+}
+.session-item:hover .session-delete { display: flex; }
+.session-delete:hover { background: #fee2e2; color: #ef4444; }
 
 .empty-sessions {
   margin-top: 40px;

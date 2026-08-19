@@ -8,6 +8,8 @@ LangGraph v1 事件体系：
 
 import asyncio
 import json
+import time
+import random
 import traceback
 from typing import Any, Dict, Optional
 
@@ -18,9 +20,11 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
 from core.agent_tools import ALL_TOOLS
+from core.memory_manager import MemoryManager
 from models.schemas import ChatAgentRequest
 
 router = APIRouter()
+memory_manager = MemoryManager()
 
 SYSTEM_PROMPT = """你是一个知识图谱智能问答助手，可以查询知识图谱中的实体、关系和属性信息。
 
@@ -117,7 +121,7 @@ def _extract_content(chunk: Any) -> str:
     return ""
 
 
-async def _stream_agent_response(config: Dict[str, Any], model_id: int, message: str):
+async def _stream_agent_response(config: Dict[str, Any], model_id: int, message: str, session_id: Optional[str] = None, user_id: Optional[int] = None):
     model_cfg = config.get("model", {})
 
     llm = ChatOpenAI(
@@ -136,6 +140,19 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
 
     user_message = f"[modelId={model_id}] {message}"
 
+    # ── 加载历史记忆并保存用户消息 ──
+    history_messages = []
+    if session_id:
+        try:
+            history_messages = memory_manager.get_langchain_memory(session_id)
+            memory_manager.add_memory(session_id, "user", message, user_id or 0)
+        except Exception as e:
+            traceback.print_exc()
+            # 记忆加载失败不阻断对话，降级为无记忆模式
+
+    # 拼接：历史记忆 + 当前用户消息
+    agent_messages = history_messages + [HumanMessage(content=user_message)]
+
     try:
         tool_calls_made = False
         tool_executed = False  # 关键：是否已经有至少一个工具执行完成（on_tool_end 已触发）→ 进入正式回答阶段
@@ -148,9 +165,11 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
         LARGE_DELTA_THRESHOLD = 40
         skipped_large_thinking: Optional[str] = None
         skipped_large_answer: Optional[str] = None
+        # 累积完整 AI 回答文本，用于对话结束后保存到记忆
+        full_answer_parts: list = []
 
         async for event in agent.astream_events(
-            {"messages": [HumanMessage(content=user_message)]},
+            {"messages": agent_messages},
             config={"recursion_limit": 50},
             version="v2",
         ):
@@ -240,6 +259,7 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                         if len(delta) > LARGE_DELTA_THRESHOLD:
                             skipped_large_answer = delta
                         elif delta:
+                            full_answer_parts.append(delta)
                             yield _sse_event("answer", {"content": delta})
                         answer_sent_len = len(answer_part)
                     continue
@@ -251,6 +271,7 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                         if len(delta) > LARGE_DELTA_THRESHOLD:
                             skipped_large_answer = delta
                         elif delta:
+                            full_answer_parts.append(delta)
                             yield _sse_event("answer", {"content": delta})
                         answer_sent_len = len(full_content)
                 else:
@@ -272,38 +293,94 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                         full_text = getattr(last_msg, "content", "") or ""
                         has_tool_calls = bool(getattr(last_msg, "tool_calls", None))
 
-                        # 优先使用"暂存的大段累积内容"（来自流式事件但delta过大的）
-                        pending_think: Optional[str] = None
-                        pending_answer: Optional[str] = None
+                        # 无工具调用的直答场景：流式阶段已将全部内容作为 thinking 推送（前端已展示），
+                        # 此处不重复推送 SSE，仅将完整回答存入记忆，保证历史对话恢复时 AI 回复不丢失
+                        if not tool_executed and not has_tool_calls and full_text and not full_answer_parts:
+                            full_answer_parts.append(full_text)
+                        else:
+                            # 有工具调用：优先使用"暂存的大段累积内容"（流式事件但 delta 过大被跳过的）
+                            pending_think: Optional[str] = None
+                            pending_answer: Optional[str] = None
 
-                        if skipped_large_thinking:
-                            pending_think = skipped_large_thinking
-                        if skipped_large_answer:
-                            pending_answer = skipped_large_answer
+                            if skipped_large_thinking:
+                                pending_think = skipped_large_thinking
+                            if skipped_large_answer:
+                                pending_answer = skipped_large_answer
 
-                        # 没有暂存 → 从最终 last_msg 解析
-                        if pending_think is None and pending_answer is None and not has_tool_calls and full_text:
-                            if think_tag_open in full_text and think_tag_close in full_text:
-                                _, after = full_text.split(think_tag_open, 1)
-                                _inside, after_close = after.split(think_tag_close, 1)
-                                pending_think = _inside.strip() or None
-                                pending_answer = after_close.strip() or None
-                            else:
-                                pending_answer = full_text or None
+                            # 没有暂存 → 从最终 last_msg 解析
+                            if pending_think is None and pending_answer is None and not has_tool_calls and full_text:
+                                if think_tag_open in full_text and think_tag_close in full_text:
+                                    _, after = full_text.split(think_tag_open, 1)
+                                    _inside, after_close = after.split(think_tag_close, 1)
+                                    pending_think = _inside.strip() or None
+                                    pending_answer = after_close.strip() or None
+                                else:
+                                    pending_answer = full_text or None
 
-                        # 对暂存 / 解析到的内容进行分段流式推送
-                        if pending_think:
-                            async for ev in _sse_stream_chunks("thinking", pending_think, chunk_size=6, sleep_ms=10):
-                                yield ev
-                        if pending_answer:
-                            async for ev in _sse_stream_chunks("answer", pending_answer, chunk_size=4, sleep_ms=5):
-                                yield ev
+                            # 对暂存 / 解析到的内容进行分段流式推送
+                            if pending_think:
+                                async for ev in _sse_stream_chunks("thinking", pending_think, chunk_size=6, sleep_ms=10):
+                                    yield ev
+                            if pending_answer:
+                                # 确保最终回答文本被累积（用于保存到记忆）
+                                full_answer_parts.append(pending_answer)
+                                async for ev in _sse_stream_chunks("answer", pending_answer, chunk_size=4, sleep_ms=5):
+                                    yield ev
 
     except Exception as e:
         yield _sse_event("error", {"message": str(e)})
         traceback.print_exc()
+    finally:
+        # ── 保存 AI 回答到记忆 ──
+        if session_id:
+            answer_text = "".join(full_answer_parts).strip()
+            if answer_text:
+                try:
+                    memory_manager.add_memory(session_id, "ai", answer_text, user_id or 0)
+                except Exception:
+                    traceback.print_exc()
 
     yield _sse_event("done", {})
+
+
+@router.post("/api/chat/session/create")
+async def create_chat_session():
+    """创建新会话，返回 session_id（字符串）。
+
+    生成规则：时间戳（毫秒）+ 随机数，确保唯一。
+    对话发生时消息才会写入 chat_history 表，创建会话本身不写入。
+    """
+    session_id = str(int(time.time() * 1000) * 1000 + random.randint(0, 999))
+    return {"sessionId": session_id}
+
+
+@router.get("/api/chat/session/list")
+async def list_chat_sessions(userId: int):
+    """获取指定用户的历史会话列表（从 MySQL 永久存储中查询，用户间隔离）。"""
+    sessions = memory_manager.mysql.get_sessions(userId)
+    # datetime 序列化为字符串，便于前端展示
+    for s in sessions:
+        for key in ("createdAt", "updatedAt"):
+            if s.get(key) is not None:
+                s[key] = s[key].strftime("%Y-%m-%d %H:%M:%S")
+    return {"sessions": sessions}
+
+
+@router.get("/api/chat/session/{session_id}/messages")
+async def get_session_messages(session_id: str):
+    """获取会话的完整消息列表（供前端切换页面后恢复历史对话）。"""
+    messages = memory_manager.mysql.get_session_messages(session_id)
+    return {"messages": messages}
+
+
+@router.delete("/api/chat/session/{session_id}")
+async def delete_chat_session(session_id: str, userId: int):
+    """删除会话：清除 Redis 记忆 + MySQL 逻辑删除（isDelete=1）。
+
+    仅允许删除自己的会话（按 userId 过滤）。
+    """
+    affected = memory_manager.delete_memory(session_id, userId)
+    return {"message": f"会话 {session_id} 已删除", "affected": affected}
 
 
 @router.post("/api/chat/agent/stream")
@@ -322,7 +399,7 @@ async def chat_agent_stream(req: ChatAgentRequest, request: Request):
         raise HTTPException(status_code=500, detail="配置未加载")
 
     return StreamingResponse(
-        _stream_agent_response(config, req.modelId, req.message),
+        _stream_agent_response(config, req.modelId, req.message, req.sessionId, req.userId),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

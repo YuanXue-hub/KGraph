@@ -92,3 +92,5 @@ class ChatAgentRequest(BaseModel):
     """智能问答 Agent 请求"""
     message: str
     modelId: int
+    sessionId: Optional[str] = None
+    userId: Optional[int] = None
