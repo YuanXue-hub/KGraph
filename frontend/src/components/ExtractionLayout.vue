@@ -101,6 +101,7 @@ defineProps<{
 
 .ext-main > .el-col {
   display: flex;
+  min-width: 0; /* 允许 flex item 收缩到小于内容宽度，防止表格撑宽面板 */
 }
 
 /* 通用面板：kg-card 风格 */

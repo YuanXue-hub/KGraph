@@ -1,22 +1,19 @@
 <template>
   <div class="dl-extract-app">
-    <el-row :gutter="12" align="stretch" class="extract-main-row">
-      <!-- 左侧：配置与执行 -->
-      <el-col :span="12" class="extract-col">
-        <el-card shadow="never" class="config-card extract-equal-card">
-          <template #header>
-            <div class="card-header">
-              <span class="header-title">
-                <el-icon><Cpu /></el-icon>
-                抽取配置
-              </span>
-              <el-button type="primary" size="small" :loading="extracting" :disabled="!canExtract" @click="handleExtract" class="ext-btn-action">
-                开始抽取
-              </el-button>
-            </div>
-          </template>
+    <ExtractionLayout
+      theme-color="#f56c6c"
+      config-title="抽取配置"
+      result-title="抽取结果"
+      history-title="抽取历史记录"
+    >
+      <template #config-extra>
+        <el-button type="primary" size="small" :loading="extracting" :disabled="!canExtract" @click="handleExtract" class="ext-btn-action">
+          开始抽取
+        </el-button>
+      </template>
 
-          <el-form label-width="100px" class="ext-form">
+      <template #config>
+        <el-form label-width="100px" class="ext-form">
             <el-form-item label="所属项目">
               <el-select v-model="projectId" placeholder="选择项目" filterable style="width: 100%" @change="onProjectChange">
                 <el-option v-for="p in projects" :key="p.id" :label="p.projectName" :value="p.id" />
@@ -69,11 +66,6 @@
             </el-form-item>
 
             <el-divider content-position="left">模型架构</el-divider>
-
-            <div class="arch-tip">
-              <el-icon><InfoFilled /></el-icon>
-              <span>「DL 模型版本」是在模型训练模块训练完成的具体模型实例；「模型架构」是该版本所采用的网络结构（如 BiLSTM-CRF / BERT-CRF 等）。选择模型版本后会自动同步对应架构，也可手动切换。</span>
-            </div>
 
             <el-form-item label="DL 模型版本">
               <el-select v-model="dlConfig.modelVersion" style="width: 100%" placeholder="选择已训练的模型版本" :no-data-text="'暂无已训练模型，请先在「模型训练」中完成训练'">
@@ -140,27 +132,18 @@
               </el-col>
             </el-row>
           </el-form>
-        </el-card>
-      </el-col>
+      </template>
 
-      <!-- 右侧：结果展示 -->
-      <el-col :span="12" class="extract-col">
-        <el-card shadow="never" class="result-card extract-equal-card">
-          <template #header>
-            <div class="card-header">
-              <span class="header-title">
-                <el-icon><DataAnalysis /></el-icon>
-                抽取结果
-              </span>
-              <div v-if="result" class="ext-stat-tags">
-                <el-tag type="primary" effect="plain" size="small">实体 {{ result.entities?.length || 0 }}</el-tag>
-                <el-tag type="success" effect="plain" size="small">关系 {{ result.relations?.length || 0 }}</el-tag>
-                <el-tag type="warning" effect="plain" size="small" v-if="result.costTime">耗时 {{ result.costTime }}ms</el-tag>
-                <el-tag type="info" effect="plain" size="small" v-if="result.metrics?.modelArchitecture">{{ result.metrics.modelArchitecture }}</el-tag>
-              </div>
-            </div>
-          </template>
+      <template #result-extra>
+        <div v-if="result" class="ext-stat-tags">
+          <el-tag type="primary" effect="plain" size="small">实体 {{ result.entities?.length || 0 }}</el-tag>
+          <el-tag type="success" effect="plain" size="small">关系 {{ result.relations?.length || 0 }}</el-tag>
+          <el-tag type="warning" effect="plain" size="small" v-if="result.costTime">耗时 {{ result.costTime }}ms</el-tag>
+          <el-tag type="info" effect="plain" size="small" v-if="result.metrics?.modelArchitecture">{{ result.metrics.modelArchitecture }}</el-tag>
+        </div>
+      </template>
 
+      <template #result>
           <el-empty v-if="!result" description="点击「开始抽取」查看结果" />
 
           <div v-else class="ext-result">
@@ -242,50 +225,54 @@
                   </el-table-column>
                 </el-table>
               </el-tab-pane>
-
-              <el-tab-pane label="抽取历史">
-                <div class="history-toolbar">
-                  <el-button size="small" :icon="Refresh" @click="loadHistory">刷新</el-button>
-                </div>
-                <el-table :data="history" border v-loading="historyLoading" size="small">
-                  <el-table-column type="index" width="50" align="center" />
-                  <el-table-column prop="extractionType" label="类型" width="80" align="center">
-                    <template #default="{ row }">
-                      <el-tag type="danger" size="small">{{ row.extractionType || 'DL' }}</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="duration" label="耗时(ms)" width="100" align="center" />
-                  <el-table-column prop="status" label="状态" width="90" align="center">
-                    <template #default="{ row }">
-                      <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="createTime" label="抽取时间" min-width="160">
-                    <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
-                  </el-table-column>
-                  <el-table-column label="操作" width="100" align="center">
-                    <template #default="{ row }">
-                      <el-button size="small" :icon="View" @click="viewHistory(row)">查看</el-button>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <div class="ext-pagination">
-                  <el-pagination v-model:current-page="histPage" v-model:page-size="histSize" :total="histTotal" layout="total, prev, pager, next" @current-change="loadHistory" />
-                </div>
-              </el-tab-pane>
             </el-tabs>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+      </template>
+
+      <template #history-extra>
+        <el-button size="small" :icon="Refresh" @click="loadHistory">刷新</el-button>
+      </template>
+
+      <template #history>
+        <el-table :data="history" border v-loading="historyLoading" size="small">
+          <el-table-column type="index" min-width="50" align="center" />
+          <el-table-column prop="extractionType" label="类型" min-width="70" align="center">
+            <template #default="{ row }">
+              <el-tag type="danger" size="small">{{ row.extractionType || 'DL' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="modelId" label="模型ID" min-width="110" align="center" />
+          <el-table-column prop="duration" label="耗时(ms)" min-width="90" align="center" />
+          <el-table-column prop="status" label="状态" min-width="70" align="center">
+            <template #default="{ row }">
+              <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createTime" label="抽取时间" min-width="150">
+            <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" min-width="130" align="center">
+            <template #default="{ row }">
+              <el-button size="small" @click="viewHistory(row)">查看</el-button>
+              <el-button size="small" @click="exportExtractionTask(row)">导出</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div class="ext-pagination">
+          <el-pagination v-model:current-page="histPage" v-model:page-size="histSize" :total="histTotal" layout="total, prev, pager, next" @current-change="loadHistory" />
+        </div>
+      </template>
+    </ExtractionLayout>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Cpu, DataAnalysis, InfoFilled, Refresh, View } from '@element-plus/icons-vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { projectApi, modelApi, corpusApi, extractionApi, trainTaskApi } from '@/api'
+import { exportExtractionTask } from '@/utils/export'
+import ExtractionLayout from '@/components/ExtractionLayout.vue'
 
 interface Project { id: number | string; projectName: string }
 interface ModelInfo { id: number | string; modelName: string }
@@ -568,7 +555,6 @@ async function loadHistory() {
   historyLoading.value = true
   try {
     const res = await extractionApi.list({
-      projectId: projectId.value as number,
       extractionType: 'DL',
       pageNum: histPage.value,
       pageSize: histSize.value,
@@ -604,9 +590,9 @@ function formatTime(t?: string): string {
   return t.replace('T', ' ').substring(0, 19)
 }
 
-onMounted(() => {
-  loadProjects()
-  loadHistory()
+onMounted(async () => {
+  await loadProjects()
+  await loadHistory()
   loadTrainedModels()
 })
 </script>
@@ -614,69 +600,16 @@ onMounted(() => {
 <style scoped>
 .dl-extract-app {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
 }
 
-/* 左右等高 */
-.extract-main-row {
-  align-items: stretch;
-}
-
-.extract-col {
-  display: flex;
-}
-
-.extract-equal-card {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.extract-equal-card :deep(.el-card__body) {
-  flex: 1;
-  overflow: auto;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 600;
-  font-size: 14px;
-  color: #1d2129;
-}
-
-.header-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+/* ExtractionLayout 内嵌在 dl-page（已有 padding/max-width）中，去除其自带边距 */
+.dl-extract-app :deep(.ext-layout) {
+  padding: 0;
+  max-width: none;
 }
 
 .ext-form :deep(.el-divider--horizontal) {
   margin: 16px 0;
-}
-
-.arch-tip {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  background: #f0f5ff;
-  border: 1px solid #d6e4ff;
-  border-radius: 6px;
-  font-size: 12px;
-  color: #4e5969;
-  line-height: 1.6;
-}
-
-.arch-tip :deep(.el-icon) {
-  color: #165dff;
-  margin-top: 2px;
-  flex-shrink: 0;
 }
 
 .ext-btn-action {
@@ -756,10 +689,6 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 0;
-}
-
-.history-toolbar {
-  margin-bottom: 12px;
 }
 
 .mt-12 {

@@ -60,12 +60,12 @@ KGraph 是一个面向知识图谱构建、管理、训练和问答的一体式�
   - 结构化抽取：Excel/CSV 字段映射
   - KOS 抽取：领域词表 + TF-IDF 统计 + 三层结构（范畴→概念→术语）
   - 深度学习抽取：词典匹配 + CRF 约束 + 规则细分（22 种实体类型）
-  - LLM 抽取：Prompt 工程 + 大模型 API
+  - LLM 抽取：两阶段流水线（Semantica 风格）—— 阶段1 抽节点（实体/事件/指代消解/时间锚点）→ 阶段2 以实体表为硬约束抽关系（附证据句），支持双时态关系（CURRENT/EXPIRED/NEGATED）
 - **图谱探索**：G6 交互式可视化，三栏布局，点击节点挤压中间图谱区域展示详情
 - **实体关系管理**：CRUD 操作，分页展示
 - **模型训练**：训练任务管理、曲线监控、模型效果评估
 - **数据标注**：标注任务管理，支持 BIO 标签体系
-- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 6 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`get_entities_by_type`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① 思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
+- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 8 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`get_entities_by_type`、`get_entities_by_name`、`get_causal_chain`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① 思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
 - **文本切分**（规划中）：MinerU 解析后的长 Markdown 文本将按结构/滑动窗口切分为 chunk 存储，防止 LLM 抽取时上下文窗口超限
 
 ---
@@ -394,14 +394,34 @@ Java 主服务
 - 规则后处理细分 22 种实体类型（书名号→作品、金额正则→金额等）
 - 关系抽取基于实体类型对模板
 
-#### 4. LLM 抽取
+#### 4. LLM 抽取（两阶段流水线，Semantica 风格）
 
-基于大语言模型的零样本抽取：
+基于大语言模型的高质量抽取，采用「先节点、后关系」两阶段架构（2 次 LLM 调用），每阶段专注单一子任务以获得最佳抽取质量：
 
-- Prompt 工程构造抽取指令
-- 支持自定义实体/关系类型
-- JSON 结构化输出解析
-- 结果写入 Neo4j
+```
+阶段1 build_node_messages（节点抽取）
+  ├─ 静态名词实体（人/机构/公司/产品/数值指标等）
+  ├─ 事件实体：type 统一为「事件」，命名必须自包含（主体+动作+对象完整短语）
+  ├─ 指代消解链：该院/该公司/其 → 规范实体（不再生成孤立指代节点）
+  └─ 时间锚点（DATE/DATERANGE/RELATIVE 等类型）
+        ↓ 代码合并实体总表
+阶段2 build_relation_messages（关系抽取）
+  ├─ 实体表注入 Prompt 硬约束：主语/宾语必须命中实体表（消除幻觉实体）
+  └─ 每条关系附证据句原文（evidenceText）
+        ↓ 代码校验层（0 次 LLM）
+  ├─ 引用合法性检查：未命中实体表的关系直接丢弃
+  ├─ 证据句回原文 find() 定位自动生成 span（LLM 不输出数字偏移）
+  ├─ 事件 type 归一化（变体统一为「事件」）
+  └─ 双时态语义标注：vt_from/vt_to + status（CURRENT/EXPIRED/NEGATED）
+        ↓ write_llm_extracted 写入 Neo4j
+```
+
+**质量机制**：
+- 实体表硬约束 + 代码二次校验，幻觉实体清零、孤立节点率显著下降
+- 证据句可回溯：每条关系都能定位到原文位置
+- 双时态关系：支持「曾任（EXPIRED）」「传闻否认（NEGATED）」「现任（CURRENT）」多期共存
+- DeepSeek `response_format=json_object` 硬约束 JSON 合法性
+- 评估基线（600 字复合语料）：孤立实体率 9.8%、平均度 1.22、否定/时态语义 4/4 精准
 
 ### 图谱探索
 
@@ -457,8 +477,10 @@ Python 后端通过 `StreamingResponse` 发出标准 SSE 帧（`Cache-Control: n
 | `get_graph_stats(modelId)`                 | 返回实体数 / 关系数 / 各类 Top 10 | `COUNT` 聚合 + 多次 `UNWIND keys({…})` |
 | `list_entity_types(modelId)`               | 列出所有实体标签及数量 | `labels(n)` 聚合 |
 | `get_entities_by_type(entity_type, modelId, limit)` | 按实体类型查询实体列表（如「人物有哪些」「地点有什么」） | `MATCH (n:Entity {type: $type, modelId: $mid})` |
+| `get_entities_by_name(name, modelId, limit)` | 按名称精确查询同名多条记录（同名不同类型实体全量返回，条数由 LLM 决定） | `WHERE n.name = $name OR n.canonicalName = $name` |
+| `get_causal_chain(start_entity, end_entity?, direction, max_hops, modelId)` | 因果链查询：辐射模式（单事件多跳扩散）/ 两点路径模式（A→B 传导路径） | `MATCH (a)-[r:CAUSES*1..5]->(b)` BFS 分层 |
 
-> 提示：Agent 根据用户问题自主选择工具（支持多轮调用），例如「有哪些实体？」→ `search_entities`，「X 与谁有关？」→ `get_entity_relations`，「图谱里有什么统计信息？」→ `get_graph_stats`，「人物有哪些？」→ `get_entities_by_type`。同时通过 SYSTEM_PROMPT 约束工具调用上限（3 次）+ `recursion_limit=50` 兜底，避免 LangGraph 递归限制（默认 25 次）触发。
+> 提示：Agent 根据用户问题自主选择工具（支持多轮调用），例如「有哪些实体？」→ `search_entities`，「X 与谁有关？」→ `get_entity_relations`，「图谱里有什么统计信息？」→ `get_graph_stats`，「人物有哪些？」→ `get_entities_by_type`，「XX 有哪些类型的记录？」→ `get_entities_by_name`，「某事件引发了什么连锁反应？」→ `get_causal_chain`。同时通过 SYSTEM_PROMPT 约束工具调用上限（3 次）+ `recursion_limit=50` 兜底，避免 LangGraph 递归限制（默认 25 次）触发。
 
 ---
 

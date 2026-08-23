@@ -88,7 +88,12 @@ public class GraphModelServiceImpl extends ServiceImpl<GraphModelMapper, GraphMo
         QueryWrapper<GraphModel> queryWrapper = new QueryWrapper<>();
         queryWrapper.eq(ObjUtil.isNotNull(projectId), "projectId", projectId);
         queryWrapper.like(StrUtil.isNotBlank(modelName), "modelName", modelName);
-        queryWrapper.orderBy(StrUtil.isNotBlank(sortField), "ascend".equals(sortOrder), sortField);
+        if (StrUtil.isNotBlank(sortField)) {
+            queryWrapper.orderBy(true, "ascend".equals(sortOrder), sortField);
+        } else {
+            // 默认按 id 降序，保证最新创建的模型排在第一页
+            queryWrapper.orderByDesc("id");
+        }
         return this.page(new Page<>(current, pageSize), queryWrapper);
     }
 

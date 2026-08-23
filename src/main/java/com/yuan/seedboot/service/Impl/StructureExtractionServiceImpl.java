@@ -265,12 +265,14 @@ public class StructureExtractionServiceImpl implements StructureExtractionServic
         long startTs = System.currentTimeMillis();
         try {
             Map<String, Object> writeResult = writeToNeo4j(request, rows);
-            // 4. 填充结果
+            // 4. 填充结果（含实体/关系明细，供前端展示与导出）
             Map<String, Object> resultData = new HashMap<>();
             resultData.put("writeCount", writeResult);
             resultData.put("totalRows", rows.size());
             resultData.put("entities", writeResult.get("entities"));
             resultData.put("relations", writeResult.get("relations"));
+            resultData.put("extractedEntities", writeResult.get("extractedEntities"));
+            resultData.put("extractedRelations", writeResult.get("extractedRelations"));
 
             task.setResult(JSONUtil.toJsonStr(resultData));
             task.setStatus(2);
@@ -292,13 +294,16 @@ public class StructureExtractionServiceImpl implements StructureExtractionServic
     }
 
     /**
-     * 按映射配置将数据批量写入 Neo4j
+     * 按映射配置将数据批量写入 Neo4j，同时收集去重后的实体/关系明细（用于结果展示与导出）
      */
     private Map<String, Object> writeToNeo4j(StructureExtractionRequest request, List<Map<String, String>> rows) {
         Long modelId = request.getModelId();
         int entityCount = 0;
         int relationCount = 0;
         int failCount = 0;
+        // 明细按业务键去重（与 Neo4j MERGE 语义一致），保持插入顺序
+        Map<String, Map<String, Object>> entityDetailMap = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> relationDetailMap = new LinkedHashMap<>();
 
         try (Session session = neo4jDriver.session()) {
             // 写入实体
@@ -336,6 +341,13 @@ public class StructureExtractionServiceImpl implements StructureExtractionServic
                                     )
                             );
                             entityCount++;
+                            entityDetailMap.computeIfAbsent(em.getEntityTypeName() + "::" + name, k -> {
+                                Map<String, Object> detail = new HashMap<>();
+                                detail.put("name", name);
+                                detail.put("type", em.getEntityTypeName());
+                                detail.put("properties", props);
+                                return detail;
+                            });
                         } catch (Exception e) {
                             log.warn("实体写入失败: row={}, error={}", row, e.getMessage());
                             failCount++;
@@ -385,6 +397,17 @@ public class StructureExtractionServiceImpl implements StructureExtractionServic
                                     )
                             );
                             relationCount++;
+                            relationDetailMap.computeIfAbsent(
+                                    rm.getRelationTypeName() + "::" + headName + "::" + tailName, k -> {
+                                        Map<String, Object> detail = new HashMap<>();
+                                        detail.put("relationType", rm.getRelationTypeName());
+                                        detail.put("head", headName);
+                                        detail.put("headType", rm.getHeadEntityTypeName());
+                                        detail.put("tail", tailName);
+                                        detail.put("tailType", rm.getTailEntityTypeName());
+                                        detail.put("properties", props);
+                                        return detail;
+                                    });
                         } catch (Exception e) {
                             log.warn("关系写入失败: row={}, error={}", row, e.getMessage());
                             failCount++;
@@ -398,6 +421,8 @@ public class StructureExtractionServiceImpl implements StructureExtractionServic
         result.put("entities", entityCount);
         result.put("relations", relationCount);
         result.put("failed", failCount);
+        result.put("extractedEntities", new ArrayList<>(entityDetailMap.values()));
+        result.put("extractedRelations", new ArrayList<>(relationDetailMap.values()));
         return result;
     }
 

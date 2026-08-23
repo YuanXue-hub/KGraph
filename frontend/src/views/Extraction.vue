@@ -204,25 +204,26 @@
 
     <template #history>
       <el-table :data="history" border v-loading="historyLoading" size="small">
-        <el-table-column type="index" width="50" align="center" />
-        <el-table-column prop="extractionType" label="类型" width="90" align="center">
+        <el-table-column type="index" min-width="50" align="center" />
+        <el-table-column prop="extractionType" label="类型" min-width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="extractionTypeColor(row.extractionType)" size="small">{{ row.extractionType || 'LLM' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="modelId" label="模型ID" width="120" align="center" />
-        <el-table-column prop="duration" label="耗时(ms)" width="100" align="center" />
-        <el-table-column prop="status" label="状态" width="90" align="center">
+        <el-table-column prop="modelId" label="模型ID" min-width="110" align="center" />
+        <el-table-column prop="duration" label="耗时(ms)" min-width="90" align="center" />
+        <el-table-column prop="status" label="状态" min-width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="抽取时间" min-width="160">
+        <el-table-column prop="createTime" label="抽取时间" min-width="150">
           <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="100" align="center">
+        <el-table-column label="操作" min-width="130" align="center">
           <template #default="{ row }">
-            <el-button size="small" :icon="View" @click="viewHistory(row)">查看</el-button>
+            <el-button size="small" @click="viewHistory(row)">查看</el-button>
+            <el-button size="small" @click="exportExtractionTask(row)">导出</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -236,8 +237,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, View } from '@element-plus/icons-vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { projectApi, modelApi, corpusApi, extractionApi, entityTypeApi, relationTypeApi } from '@/api'
+import { exportExtractionTask } from '@/utils/export'
 import ExtractionLayout from '@/components/ExtractionLayout.vue'
 
 interface Project { id: number; projectName: string }
@@ -532,7 +534,6 @@ async function loadHistory() {
   historyLoading.value = true
   try {
     const res = await extractionApi.list({
-      projectId: projectId.value as number,
       extractionType: 'LLM',
       pageNum: histPage.value,
       pageSize: histSize.value,

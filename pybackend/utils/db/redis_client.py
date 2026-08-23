@@ -34,6 +34,8 @@ class RedisClient:
         tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         return int((tomorrow - now).total_seconds())
 
+    # ── 会话消息记忆（List） ──
+
     def get_message(self, session_id: str) -> List[Dict[str, str]]:
         """获取会话历史消息列表。空会话返回空列表 []。"""
         key = f"chat:session:{session_id}"
@@ -56,6 +58,27 @@ class RedisClient:
         return self.client.exists(key) > 0
 
     def clear_message(self, session_id: str) -> None:
-        """清除会话记忆。"""
-        key = f"chat:session:{session_id}"
-        self.client.delete(key)
+        """清除会话记忆（含消息列表与会话元数据）。"""
+        msg_key = f"chat:session:{session_id}"
+        meta_key = f"chat:meta:{session_id}"
+        self.client.delete(msg_key, meta_key)
+
+    # ── 会话元数据（Hash）：标题、生成标记等非消息内容 ──
+
+    @staticmethod
+    def _meta_key(session_id: str) -> str:
+        return f"chat:meta:{session_id}"
+
+    def set_session_meta(self, session_id: str, field: str, value: str) -> None:
+        """写入会话元数据字段，并刷新 TTL 到次日 0 点。"""
+        key = self._meta_key(session_id)
+        self.client.hset(key, field, str(value) if value is not None else "")
+        self.client.expire(key, self._ttl_until_midnight())
+
+    def get_session_meta(self, session_id: str, field: Optional[str] = None):
+        """读取会话元数据。不传 field 时返回完整 Dict。"""
+        key = self._meta_key(session_id)
+        if field is None:
+            return self.client.hgetall(key) or {}
+        val = self.client.hget(key, field)
+        return val if val is not None else ""

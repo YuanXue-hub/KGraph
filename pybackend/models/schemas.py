@@ -8,11 +8,16 @@ class ExtractionRequest(BaseModel):
     ontology: Dict[str, Any]
     modelId: int
     mode: str = "zero_shot"
+    docId: Optional[str] = None    # 可选：语料库原文 docId，用于证据追溯
 
 
 class ExtractionResult(BaseModel):
     entities: List[Dict[str, Any]] = Field(default_factory=list)
     relations: List[Dict[str, Any]] = Field(default_factory=list)
+    timeAnchors: List[Dict[str, Any]] = Field(default_factory=list)  # 新增：LLM 抽的时间锚点
+    causalEdges: List[Dict[str, Any]] = Field(default_factory=list)  # 新增：因果边 [:CAUSES]
+    qualityReport: List[Dict[str, Any]] = Field(default_factory=list)  # 新增：Semantica 质量告警清单
+    qualityStats: Dict[str, Any] = Field(default_factory=dict)       # 新增：质量计数统计
     tokenConsumed: int = 0
     duration: int = 0
     writeCount: Dict[str, Any] = Field(default_factory=dict)

@@ -132,7 +132,7 @@ export const modelApi = {
     return request({ url: '/model/copy', method: 'post', data })
   },
   list(projectId: number | string) {
-    return request({ url: '/model/list', method: 'get', params: { projectId } })
+    return request({ url: '/model/list', method: 'get', params: { projectId, pageNum: 1, pageSize: 100 } })
   },
   detail(modelId: number | string) {
     return request({ url: '/model/detail', method: 'get', params: { modelId } })

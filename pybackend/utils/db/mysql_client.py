@@ -28,6 +28,7 @@ class MysqlClient:
             cursorclass=pymysql.cursors.DictCursor,
             autocommit=True,
         )
+        self._ensure_tables()
 
     def _ensure_connection(self):
         """确保连接存活，断开时自动重连。"""
@@ -35,6 +36,37 @@ class MysqlClient:
             self.connection.ping(reconnect=True)
         except Exception:
             self._init_client()
+
+    def _ensure_tables(self):
+        """确保 chat_session 会话元数据表存在（存放 AI 生成标题等）。
+
+        注意：所有 VARCHAR 列显式使用 utf8mb4_unicode_ci，
+        与 chat_history.sessionId/messageType 的排序规则保持一致，
+        避免 LEFT JOIN 时出现 "Illegal mix of collations"。
+        """
+        self._ensure_connection()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chat_session (
+                    sessionId VARCHAR(64)  CHARACTER SET utf8mb4
+                                           COLLATE utf8mb4_unicode_ci NOT NULL
+                                           PRIMARY KEY COMMENT '会话ID',
+                    userId    BIGINT       NOT NULL COMMENT '用户ID（隔离用）',
+                    title     VARCHAR(64)  CHARACTER SET utf8mb4
+                                           COLLATE utf8mb4_unicode_ci NOT NULL
+                                           DEFAULT '' COMMENT 'AI 生成或用户指定的会话标题',
+                    createdAt DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updatedAt DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                           ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_userId (userId)
+                ) ENGINE=InnoDB
+                  DEFAULT CHARSET=utf8mb4
+                  COLLATE=utf8mb4_unicode_ci
+                  COMMENT='会话元数据（AI生成标题等）';
+                """
+            )
+        self.connection.commit()
 
     def add_message(self, role: str, session_id: str, content: str, user_id: int) -> None:
         """写入一条对话消息到 chat_history 表。"""
@@ -81,27 +113,71 @@ class MysqlClient:
             ]
 
     def get_sessions(self, user_id: int, limit: int = 50) -> List[Dict]:
-        """获取指定用户的历史会话列表（按最近活跃时间倒序）。"""
+        """获取指定用户的历史会话列表（按最近活跃时间倒序）。
+
+        优先返回 chat_session.title（AI 生成或用户指定的会话标题），
+        未设置时降级为 chat_history 中该会话的第一条消息作为标题。
+        """
         self._ensure_connection()
         with self.connection.cursor() as cursor:
             cursor.execute(
-                "SELECT sessionId, MIN(message) AS firstMessage, "
-                "MAX(message) AS lastMessage, "
-                "MIN(createTime) AS createdAt, MAX(createTime) AS updatedAt, "
-                "COUNT(*) AS messageCount "
-                "FROM chat_history WHERE userId = %s AND isDelete = 0 "
-                "GROUP BY sessionId ORDER BY updatedAt DESC LIMIT %s",
+                """
+                SELECT h.sessionId                AS sessionId,
+                       COALESCE(NULLIF(cs.title, ''), MIN(h.message))
+                                                        AS title,
+                       MIN(h.message)              AS firstMessage,
+                       MAX(h.message)              AS lastMessage,
+                       LEAST(IFNULL(cs.createdAt, MIN(h.createTime)),
+                             MIN(h.createTime))      AS createdAt,
+                       GREATEST(IFNULL(cs.updatedAt, MAX(h.createTime)),
+                                MAX(h.createTime))    AS updatedAt,
+                       COUNT(*)                    AS messageCount
+                FROM chat_history h
+                LEFT JOIN chat_session cs
+                       ON cs.sessionId = h.sessionId AND cs.userId = h.userId
+                WHERE h.userId = %s AND h.isDelete = 0
+                GROUP BY h.sessionId
+                ORDER BY updatedAt DESC
+                LIMIT %s
+                """,
                 (user_id, limit),
             )
             return cursor.fetchall()
 
+    def upsert_session_title(self, session_id: str, user_id: int, title: str) -> None:
+        """写入或更新会话标题。
+
+        调用方需在写入前保证 title 长度合理（建议 ≤ 20 中文字）。
+        """
+        self._ensure_connection()
+        safe_title = (title or "").strip()[:64]
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO chat_session (sessionId, userId, title)
+                VALUES (%s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    title = VALUES(title),
+                    updatedAt = CURRENT_TIMESTAMP
+                """,
+                (session_id, user_id, safe_title),
+            )
+            self.connection.commit()
+
     def delete_session(self, session_id: str, user_id: int) -> int:
-        """逻辑删除会话（isDelete=1），仅允许删除自己的会话。返回受影响行数。"""
+        """逻辑删除会话（isDelete=1）+ 同步清除 chat_session 元数据。
+
+        仅允许删除自己的会话。返回 chat_history 受影响行数。
+        """
         self._ensure_connection()
         with self.connection.cursor() as cursor:
             affected = cursor.execute(
                 "UPDATE chat_history SET isDelete = 1 "
                 "WHERE sessionId = %s AND userId = %s AND isDelete = 0",
+                (session_id, user_id),
+            )
+            cursor.execute(
+                "DELETE FROM chat_session WHERE sessionId = %s AND userId = %s",
                 (session_id, user_id),
             )
             self.connection.commit()

@@ -64,81 +64,17 @@
 
         <el-divider content-position="left">KOS 参数设置</el-divider>
 
-        <el-row :gutter="8">
-          <el-col :span="12">
-            <el-form-item label="高频术语数量">
-              <el-input-number v-model="kosConfig.termCount" :min="1" :max="100" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="高频概念数量">
-              <el-input-number v-model="kosConfig.conceptCount" :min="1" :max="100" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="8">
-          <el-col :span="12">
-            <el-form-item label="范畴分类数量">
-              <el-input-number v-model="kosConfig.categoryCount" :min="1" :max="100" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="分类得分依据">
-              <el-select v-model="kosConfig.scoreBasis" style="width: 100%">
-                <el-option label="高频术语" value="高频术语" />
-                <el-option label="语义关联" value="语义关联" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="8">
-          <el-col :span="12">
-            <el-form-item label="体系权重">
-              <el-input-number v-model="kosConfig.weight" :min="0.1" :max="10" :step="0.1" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="是否考虑权重">
-              <el-select v-model="kosConfig.useWeight" style="width: 100%">
-                <el-option label="是" value="是" />
-                <el-option label="否" value="否" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-form-item label="目标分类体系">
-          <el-checkbox-group v-model="kosConfig.targetSystems">
-            <el-checkbox v-for="s in KOS_SYSTEMS" :key="s.value" :label="s.value">
-              {{ s.label }}
-            </el-checkbox>
-          </el-checkbox-group>
-        </el-form-item>
-
-        <el-row :gutter="8">
-          <el-col :span="12">
-            <el-form-item label="是否多文档">
-              <el-select v-model="kosConfig.multiDoc" style="width: 100%">
-                <el-option label="是" value="是" />
-                <el-option label="否" value="否" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="是否返回词">
-              <el-select v-model="kosConfig.returnWords" style="width: 100%">
-                <el-option label="是" value="是" />
-                <el-option label="否" value="否" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-form-item label="范畴分类前缀">
-          <el-input v-model="kosConfig.categoryPrefix" placeholder="可选，如 KOS-" clearable />
-        </el-form-item>
+        <div class="kos-num-row">
+          <el-form-item label="高频术语" label-width="64px">
+            <el-input-number v-model="kosConfig.termCount" :min="1" :max="9999" controls-position="right" class="kos-num-input" />
+          </el-form-item>
+          <el-form-item label="高频概念" label-width="64px">
+            <el-input-number v-model="kosConfig.conceptCount" :min="1" :max="9999" controls-position="right" class="kos-num-input" />
+          </el-form-item>
+          <el-form-item label="高频范畴" label-width="64px">
+            <el-input-number v-model="kosConfig.categoryCount" :min="1" :max="9999" controls-position="right" class="kos-num-input" />
+          </el-form-item>
+        </div>
 
         <el-form-item label="实体识别类型">
           <el-checkbox-group v-model="kosConfig.entityTypes" class="entity-type-group">
@@ -182,70 +118,54 @@
 
         <el-tabs class="mt-12">
           <el-tab-pane :label="`实体列表 (${entities.length})`">
-            <el-table :data="pagedEntities" border>
-              <el-table-column type="index" width="60" align="center" :index="(i: number) => (entityPage - 1) * ENTITY_PAGE_SIZE + i + 1" />
-              <el-table-column prop="name" label="实体名称" min-width="180" />
-              <el-table-column prop="type" label="类型" width="140">
+            <el-table :data="entities" border size="small" max-height="320">
+              <el-table-column type="index" width="50" align="center" />
+              <el-table-column prop="name" label="实体名称" min-width="120" show-overflow-tooltip />
+              <el-table-column prop="type" label="类型" width="100">
                 <template #default="{ row }">
-                  <el-tag :color="typeColorMap[row.type]" effect="dark">{{ row.type }}</el-tag>
+                  <el-tag :color="typeColorMap[row.type]" effect="dark" size="small">{{ row.type }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="属性" min-width="300">
+              <el-table-column label="属性" min-width="180">
                 <template #default="{ row }">
                   <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
                   <el-tag
                     v-for="(v, k) in row.properties"
                     :key="k"
+                    size="small"
                     class="entity-tag"
-                    style="margin: 2px 4px 2px 0;"
                   >
                     {{ k }}: {{ v }}
                   </el-tag>
                 </template>
               </el-table-column>
             </el-table>
-            <div class="ext-pagination" v-if="entities.length > ENTITY_PAGE_SIZE">
-              <el-pagination
-                v-model:current-page="entityPage"
-                :page-size="ENTITY_PAGE_SIZE"
-                :total="entities.length"
-                layout="total, prev, pager, next"
-              />
-            </div>
           </el-tab-pane>
 
           <el-tab-pane :label="`关系列表 (${relations.length})`">
-            <el-table :data="pagedRelations" border>
-              <el-table-column type="index" width="60" align="center" :index="(i: number) => (relPage - 1) * REL_PAGE_SIZE + i + 1" />
-              <el-table-column prop="head" label="头实体" min-width="180" />
-              <el-table-column prop="relation" label="关系" width="140">
+            <el-table :data="relations" border size="small" max-height="320">
+              <el-table-column type="index" width="50" align="center" />
+              <el-table-column prop="head" label="头实体" min-width="100" show-overflow-tooltip />
+              <el-table-column prop="relation" label="关系" width="100">
                 <template #default="{ row }">
-                  <el-tag type="success">{{ row.relation }}</el-tag>
+                  <el-tag type="success" size="small">{{ row.relation }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column prop="tail" label="尾实体" min-width="180" />
-              <el-table-column label="属性" min-width="280">
+              <el-table-column prop="tail" label="尾实体" min-width="100" show-overflow-tooltip />
+              <el-table-column label="属性" min-width="160">
                 <template #default="{ row }">
                   <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
                   <el-tag
                     v-for="(v, k) in row.properties"
                     :key="k"
+                    size="small"
                     class="entity-tag"
-                    style="margin: 2px 4px 2px 0;"
                   >
                     {{ k }}: {{ v }}
                   </el-tag>
                 </template>
               </el-table-column>
             </el-table>
-            <div class="ext-pagination" v-if="relations.length > REL_PAGE_SIZE">
-              <el-pagination
-                v-model:current-page="relPage"
-                :page-size="REL_PAGE_SIZE"
-                :total="relations.length"
-                layout="total, prev, pager, next"
-              />
-            </div>
           </el-tab-pane>
         </el-tabs>
       </div>
@@ -257,27 +177,28 @@
 
     <template #history>
       <el-table :data="history" border v-loading="historyLoading" size="small">
-        <el-table-column type="index" width="50" align="center" />
-        <el-table-column prop="extractionType" label="类型" width="90" align="center">
+        <el-table-column type="index" min-width="50" align="center" />
+        <el-table-column prop="extractionType" label="类型" min-width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="row.extractionType === 'KOS' ? 'success' : 'primary'" size="small">
               {{ row.extractionType || 'LLM' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="modelId" label="模型ID" width="100" align="center" />
-        <el-table-column prop="duration" label="耗时(ms)" width="100" align="center" />
-        <el-table-column prop="status" label="状态" width="90" align="center">
+        <el-table-column prop="modelId" label="模型ID" min-width="110" align="center" />
+        <el-table-column prop="duration" label="耗时(ms)" min-width="90" align="center" />
+        <el-table-column prop="status" label="状态" min-width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="抽取时间" min-width="160">
+        <el-table-column prop="createTime" label="抽取时间" min-width="150">
           <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="100" align="center">
+        <el-table-column label="操作" min-width="130" align="center">
           <template #default="{ row }">
-            <el-button size="small" :icon="View" @click="viewHistory(row)">查看</el-button>
+            <el-button size="small" @click="viewHistory(row)">查看</el-button>
+            <el-button size="small" @click="exportExtractionTask(row)">导出</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -297,8 +218,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, View } from '@element-plus/icons-vue'
+import { Refresh } from '@element-plus/icons-vue'
 import { projectApi, modelApi, corpusApi, extractionApi } from '@/api'
+import { exportExtractionTask } from '@/utils/export'
 import ExtractionLayout from '@/components/ExtractionLayout.vue'
 
 interface Project { id: number | string; projectName: string }
@@ -314,16 +236,6 @@ interface ExtractResult {
   inputText?: string
   text?: string
 }
-
-// KOS 目标分类体系选项
-const KOS_SYSTEMS = [
-  { label: 'PRES (教育文化)', value: 'PRES' },
-  { label: 'CCT (经济管理)', value: 'CCT' },
-  { label: 'CASDD (农业科学)', value: 'CASDD' },
-  { label: 'CNE (医药卫生)', value: 'CNE' },
-  { label: 'STKOS (信息技术)', value: 'STKOS' },
-  { label: 'NSTL (综合科技)', value: 'NSTL' },
-]
 
 // 实体识别类型选项
 const ENTITY_TYPES = [
@@ -354,13 +266,6 @@ const kosConfig = reactive({
   termCount: 10,
   conceptCount: 10,
   categoryCount: 10,
-  scoreBasis: '高频术语',
-  weight: 1.0,
-  useWeight: '是',
-  targetSystems: ['PRES', 'CCT', 'CASDD', 'CNE', 'STKOS', 'NSTL'],
-  multiDoc: '否',
-  categoryPrefix: '',
-  returnWords: '是',
   entityTypes: ['高频术语', '主题概念', '范畴分类', '组织机构', '专家学者', '学术期刊'],
 })
 
@@ -382,22 +287,6 @@ const typeColorMap = computed(() => {
 
 const entities = computed(() => result.value?.entities || [])
 const relations = computed(() => result.value?.relations || [])
-
-// KOS 结果列表分页（列表区不再 max-height 滚动，改为固定 20/页）
-const ENTITY_PAGE_SIZE = 20
-const REL_PAGE_SIZE = 20
-const entityPage = ref(1)
-const relPage = ref(1)
-const pagedEntities = computed(() => {
-  const start = (entityPage.value - 1) * ENTITY_PAGE_SIZE
-  return entities.value.slice(start, start + ENTITY_PAGE_SIZE)
-})
-const pagedRelations = computed(() => {
-  const start = (relPage.value - 1) * REL_PAGE_SIZE
-  return relations.value.slice(start, start + REL_PAGE_SIZE)
-})
-watch(entities, () => { entityPage.value = 1 })
-watch(relations, () => { relPage.value = 1 })
 
 const canExtract = computed(() => {
   if (!modelId.value) return false
@@ -559,7 +448,6 @@ async function loadHistory() {
   historyLoading.value = true
   try {
     const res = await extractionApi.list({
-      projectId: projectId.value as number,
       extractionType: 'KOS',
       pageNum: histPage.value,
       pageSize: histSize.value,
@@ -637,13 +525,15 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+/* 结果区不再固定高度，随面板自适应；由面板体统一滚动 */
 .ext-result {
-  max-height: 560px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .ext-highlight-box {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .ext-section-title {
@@ -673,6 +563,9 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-2);
   white-space: pre-wrap;
+  /* 长文本限高滚动，避免挤压下方实体/关系列表 */
+  max-height: 240px;
+  overflow: auto;
 }
 
 .ext-highlight-text :deep(.hl-entity) {
@@ -701,6 +594,28 @@ onMounted(() => {
 
 .mt-12 {
   margin-top: 12px;
+}
+
+/* KOS 参数：三个数量输入横排，均匀分布填满行宽 */
+.kos-num-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.kos-num-row :deep(.el-form-item) {
+  margin-right: 0;
+  margin-bottom: 0;
+}
+
+/* KOS 参数：数量输入框，宽度容纳四位数字 + 箭头 */
+.kos-num-input {
+  width: 95px;
+}
+
+.kos-num-input :deep(.el-input__inner) {
+  text-align: center;
 }
 
 /* 语料来源 tab 切换 */

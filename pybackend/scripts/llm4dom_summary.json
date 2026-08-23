@@ -1,0 +1,17 @@
+[
+  {
+    "domain": "领域2-科技产业",
+    "short": "tech",
+    "error": "HTTPError: 502 Server Error: Bad Gateway for url: http://localhost:8001/api/extract"
+  },
+  {
+    "domain": "领域3-金融财经",
+    "short": "finance",
+    "error": "HTTPError: 502 Server Error: Bad Gateway for url: http://localhost:8001/api/extract"
+  },
+  {
+    "domain": "领域4-学术科研",
+    "short": "academic",
+    "error": "HTTPError: 502 Server Error: Bad Gateway for url: http://localhost:8001/api/extract"
+  }
+]

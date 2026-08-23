@@ -541,23 +541,13 @@ async function newChat() {
   // 仅当当前会话有消息时才保存（避免把空会话写入列表）
   if (messages.value.length > 0) {
     saveMessagesToSession()
-  } else if (sessions.value.length > 0 && currentSessionIndex.value >= 0) {
-    // 当前会话无消息（未发送过任何内容），直接复用，不重复创建
-    const cur = sessions.value[currentSessionIndex.value]
-    if (cur && cur.messages.length === 0 && cur.title === '新的对话') return
   }
+  // 已处于「待定新会话」（未发送过任何内容）→ 直接复用，不重复创建后端会话
+  if (currentSessionIndex.value === -1 && messages.value.length === 0 && sessionId.value) return
   const sid = await createSession()
   if (sid === undefined) return
-  // 新建会话项并插入列表顶部
-  const newSession: ChatSession = {
-    sessionId: sid,
-    title: '新的对话',
-    messages: [],
-    createdAt: Date.now(),
-  }
-  sessions.value.unshift(newSession)
-  currentSessionIndex.value = 0
-  // 直接赋值新数组（Vue 能正确检测引用变化并触发渲染）
+  // DeepSeek 式交互：新会话不立即出现在左侧列表，发出首条消息时才插入并以其为标题
+  currentSessionIndex.value = -1
   messages.value = []
   sessionId.value = sid
 }
@@ -601,13 +591,21 @@ async function loadHistorySessions() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     const list: any[] = data.sessions || []
-    // 按最近活跃时间倒序转为会话项（标题取首条消息）
-    sessions.value = list.map(s => ({
-      sessionId: s.sessionId,
-      title: (s.firstMessage || '新的对话').length > 24 ? (s.firstMessage || '').slice(0, 24) + '…' : (s.firstMessage || '新的对话'),
-      messages: [],
-      createdAt: s.createdAt ? new Date(s.createdAt).getTime() : Date.now(),
-    }))
+    // 按最近活跃时间倒序转为会话项（标题优先用后端 AI 生成的 title，没有才回退为第一条消息截断）
+    sessions.value = list.map(s => {
+      const aiTitle = String(s.title || '').trim()
+      const first = String(s.firstMessage || '').trim()
+      const fallback = first.length > 24 ? first.slice(0, 24) + '…' : (first || '新的对话')
+      const rawTitle = aiTitle || fallback
+      // 防御性视觉截断：无论来源，侧边栏最多显示 24 字，超长加省略（仅展示，不修改存储）
+      const title = rawTitle.length > 24 ? rawTitle.slice(0, 24) + '…' : rawTitle
+      return {
+        sessionId: s.sessionId,
+        title,
+        messages: [],
+        createdAt: s.createdAt ? new Date(s.createdAt).getTime() : Date.now(),
+      }
+    })
     // 默认选中最近的一个会话并加载其消息
     if (sessions.value.length > 0) {
       currentSessionIndex.value = 0
@@ -671,8 +669,16 @@ async function sendMessage(text?: string) {
 
   // 用户消息
   addMessage('user', msg)
-  // 第一条消息更新会话标题
-  if (currentSession.value && currentSession.value.title === '新的对话') {
+  // 首条消息：把「待定新会话」正式插入左侧列表（DeepSeek 式），标题先用首条消息截断
+  if (!currentSession.value) {
+    sessions.value.unshift({
+      sessionId: sessionId.value || `local-${Date.now()}`,
+      title: msg.length > 24 ? msg.slice(0, 24) + '…' : msg,
+      messages: [],
+      createdAt: Date.now(),
+    })
+    currentSessionIndex.value = 0
+  } else if (currentSession.value.title === '新的对话') {
     currentSession.value.title = msg.length > 24 ? msg.slice(0, 24) + '…' : msg
   }
 
@@ -680,6 +686,33 @@ async function sendMessage(text?: string) {
   const aiMsg = addMessage('ai')
   aiMsg.streaming = true
   aiMsg.thinkStartAt = Date.now()
+
+  // 本轮收尾（done 事件到达立即执行；流异常关闭时由 finally 兜底，幂等只执行一次）
+  let roundFinished = false
+  const finishRound = () => {
+    if (roundFinished) return
+    roundFinished = true
+    aiMsg.streaming = false
+    // 立即启动 thinkDone/answerDone 倒计时 + 最多 1.5s 强制收尾
+    const safeTimeout = window.setTimeout(() => {
+      flushTypewriterFor(aiMsg)
+      sending.value = false
+      scrollToBottom()
+    }, 1500)
+    const startedAt = Date.now()
+    const flushWait = window.setInterval(() => {
+      const noBuffer = !aiMsg.contentBuffer && !aiMsg.thinkingBuffer
+      if (noBuffer) {
+        clearTimeout(safeTimeout)
+        clearInterval(flushWait)
+        flushTypewriterFor(aiMsg)
+        sending.value = false
+        scrollToBottom()
+      } else if (Date.now() - startedAt > 1200) {
+        // 已等 1.2s 还有残余缓冲 → 强制flush等safeTimeout兜底
+      }
+    }, 60)
+  }
 
   try {
     const response = await fetch('/api/v1/chat/agent/stream', {
@@ -768,16 +801,26 @@ async function sendMessage(text?: string) {
             aiMsg.contentBuffer += errMsg
             break
           }
+          case 'title': {
+            // 首轮完成后后端补发的 AI 会话标题（在 done 之后到达）。按 sessionId 精准匹配——
+            // 用户此时可能已切换/新建了别的会话，不能盲目更新"当前会话"的标题
+            const newTitle = String(event.title || '').trim()
+            const titleSid = String(event.sessionId || '')
+            if (newTitle) {
+              const target = sessions.value.find(s => s.sessionId === titleSid)
+                ?? (currentSessionIndex.value >= 0 ? sessions.value[currentSessionIndex.value] : undefined)
+              if (target) target.title = newTitle
+            }
+            break
+          }
           case 'done': {
-            // ✅ 关键：Python后端明确发了done事件 → 主动退出循环，触发finally里的收尾
-            // 先把剩余 buffer 收尾逻辑让 finally 执行
-            buffer = '' // 丢弃未完成数据
+            // ✅ 收到 done：立即结束本轮（恢复输入框），但不退出读取循环——
+            // 后端 done 之后还会补发 AI 标题的 title 事件，流关闭时循环自然结束
+            buffer = ''
             lines.length = 0
-            // 立即跳出 reader.read 的解析循环
-            // 标记流结束，break 外层 while
-            try { reader.releaseLock?.() } catch { /* noop */ }
+            finishRound()
             scrollToBottom(false)
-            return  // 从 sendMessage 内部提前退出到 finally
+            break
           }
           default:
             break
@@ -789,26 +832,8 @@ async function sendMessage(text?: string) {
     aiMsg.content += err
     aiMsg.contentBuffer += err
   } finally {
-    aiMsg.streaming = false
-    // 立即启动 thinkDone/answerDone 倒计时 + 最多 1.5s 强制收尾
-    const safeTimeout = window.setTimeout(() => {
-      flushTypewriterFor(aiMsg)
-      sending.value = false
-      scrollToBottom()
-    }, 1500)
-    const startedAt = Date.now()
-    const flushWait = window.setInterval(() => {
-      const noBuffer = !aiMsg.contentBuffer && !aiMsg.thinkingBuffer
-      if (noBuffer) {
-        clearTimeout(safeTimeout)
-        clearInterval(flushWait)
-        flushTypewriterFor(aiMsg)
-        sending.value = false
-        scrollToBottom()
-      } else if (Date.now() - startedAt > 1200) {
-        // 已等 1.2s 还有残余缓冲 → 强制flush等safeTimeout兜底
-      }
-    }, 60)
+    // 兜底：未收到 done（网络异常/连接断开）也要收尾；正常路径下 done 已处理过，幂等跳过
+    finishRound()
   }
 }
 

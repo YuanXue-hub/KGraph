@@ -221,22 +221,13 @@
       </template>
     </template>
 
-    <!-- 数据预览与结果头部右侧：抽取结束后显示导出按钮 -->
+    <!-- 数据预览与结果头部右侧：抽取结束后显示统计标签 -->
     <template #result-extra>
-      <div class="result-extra-bar">
-        <div v-if="result" class="ext-stat-tags">
-          <el-tag type="primary" effect="plain">实体 {{ result.entities }}</el-tag>
-          <el-tag type="success" effect="plain">关系 {{ result.relations }}</el-tag>
-          <el-tag type="danger" effect="plain" v-if="result.failed">失败 {{ result.failed }}</el-tag>
-          <el-tag type="warning" effect="plain" v-if="result.costTime">耗时 {{ result.costTime }}ms</el-tag>
-        </div>
-        <el-button
-          v-if="result"
-          :icon="Download"
-          @click="exportResultJson"
-        >
-          导出 JSON
-        </el-button>
+      <div v-if="result" class="ext-stat-tags">
+        <el-tag type="primary" effect="plain">实体 {{ result.entities }}</el-tag>
+        <el-tag type="success" effect="plain">关系 {{ result.relations }}</el-tag>
+        <el-tag type="danger" effect="plain" v-if="result.failed">失败 {{ result.failed }}</el-tag>
+        <el-tag type="warning" effect="plain" v-if="result.costTime">耗时 {{ result.costTime }}ms</el-tag>
       </div>
     </template>
 
@@ -259,24 +250,54 @@
         </div>
 
         <div v-if="result" class="ext-result-box">
-          <h4 class="ext-section-title">抽取结果</h4>
-          <el-result
-            :icon="result.failed > 0 ? 'warning' : 'success'"
-            :title="result.failed > 0 ? '抽取完成（部分失败）' : '抽取成功'"
-            :sub-title="`共写入 ${result.entities} 个实体、${result.relations} 个关系`"
-          />
+          <el-tabs>
+            <el-tab-pane :label="`实体列表 (${extractResultEntities.length})`">
+              <el-table :data="extractResultEntities" border size="small" max-height="360">
+                <el-table-column type="index" width="50" align="center" />
+                <el-table-column prop="name" label="实体名称" min-width="130" />
+                <el-table-column prop="type" label="类型" width="110" align="center">
+                  <template #default="{ row }">
+                    <el-tag type="warning" size="small">{{ row.type }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="属性" min-width="220">
+                  <template #default="{ row }">
+                    <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
+                    <el-tag v-for="(v, k) in row.properties" :key="k" size="small" class="ext-entity-tag">{{ k }}: {{ v }}</el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
 
-          <el-divider content-position="left">结果 JSON 预览</el-divider>
-          <div class="json-preview-card">
-            <div class="json-preview-tabs">
-              <el-radio-group v-model="resultView" size="small">
-                <el-radio-button value="entities">实体 ({{ extractResultEntities.length }})</el-radio-button>
-                <el-radio-button value="relations">关系 ({{ extractResultRelations.length }})</el-radio-button>
-                <el-radio-button value="all">完整数据</el-radio-button>
-              </el-radio-group>
-            </div>
-            <pre class="json-preview-body">{{ currentViewJson }}</pre>
-          </div>
+            <el-tab-pane :label="`关系列表 (${extractResultRelations.length})`">
+              <el-table :data="extractResultRelations" border size="small" max-height="360">
+                <el-table-column type="index" width="50" align="center" />
+                <el-table-column prop="head" label="头实体" min-width="120">
+                  <template #default="{ row }">
+                    <span>{{ row.head }}</span>
+                    <span v-if="row.headType" class="ext-node-type">（{{ row.headType }}）</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="relationType" label="关系" width="110" align="center">
+                  <template #default="{ row }">
+                    <el-tag type="success" size="small">{{ row.relationType }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="tail" label="尾实体" min-width="120">
+                  <template #default="{ row }">
+                    <span>{{ row.tail }}</span>
+                    <span v-if="row.tailType" class="ext-node-type">（{{ row.tailType }}）</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="属性" min-width="180">
+                  <template #default="{ row }">
+                    <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
+                    <el-tag v-for="(v, k) in row.properties" :key="k" size="small" class="ext-entity-tag">{{ k }}: {{ v }}</el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
         </div>
       </div>
     </template>
@@ -287,25 +308,26 @@
 
     <template #history>
       <el-table :data="history" border v-loading="historyLoading" size="small">
-        <el-table-column type="index" width="50" align="center" />
-        <el-table-column prop="extractionType" label="类型" width="90" align="center">
+        <el-table-column type="index" min-width="50" align="center" />
+        <el-table-column prop="extractionType" label="类型" min-width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="extractionTypeColor(row.extractionType)" size="small">{{ row.extractionType || 'STRUCTURE' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="modelId" label="模型ID" width="120" align="center" />
-        <el-table-column prop="duration" label="耗时(ms)" width="100" align="center" />
-        <el-table-column prop="status" label="状态" width="90" align="center">
+        <el-table-column prop="modelId" label="模型ID" min-width="110" align="center" />
+        <el-table-column prop="duration" label="耗时(ms)" min-width="90" align="center" />
+        <el-table-column prop="status" label="状态" min-width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="抽取时间" min-width="160">
+        <el-table-column prop="createTime" label="抽取时间" min-width="150">
           <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="100" align="center">
+        <el-table-column label="操作" min-width="130" align="center">
           <template #default="{ row }">
             <el-button size="small" @click="viewHistory(row)">查看</el-button>
+            <el-button size="small" @click="exportExtractionTask(row)">导出</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -321,8 +343,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
-import { Upload, Plus, Delete, Right, Refresh, Download, View } from '@element-plus/icons-vue'
+import { Upload, Plus, Delete, Right, Refresh } from '@element-plus/icons-vue'
 import { projectApi, modelApi, extractionApi } from '@/api'
+import { exportExtractionTask } from '@/utils/export'
 import ExtractionLayout from '@/components/ExtractionLayout.vue'
 
 interface Project { id: number | string; projectName: string }
@@ -369,15 +392,16 @@ interface ResultEntity {
 }
 interface ResultRelation {
   relationType: string
-  head: { name: string; type?: string }
-  tail: { name: string; type?: string }
+  head: string
+  headType?: string
+  tail: string
+  tailType?: string
   properties: Record<string, any>
 }
 interface ExtractResultData {
   summary: { entities: number; relations: number; failed: number; costTime?: number }
   entities: ResultEntity[]
   relations: ResultRelation[]
-  rawRows?: Record<string, string>[]
 }
 
 const projects = ref<Project[]>([])
@@ -399,7 +423,6 @@ const histPage = ref(1)
 const histSize = ref(10)
 const histTotal = ref(0)
 
-const resultView = ref<'entities' | 'relations' | 'all'>('entities')
 const extractResultData = ref<ExtractResultData | null>(null)
 
 const canExtract = computed(() => {
@@ -409,12 +432,6 @@ const canExtract = computed(() => {
 
 const extractResultEntities = computed<ResultEntity[]>(() => extractResultData.value?.entities || [])
 const extractResultRelations = computed<ResultRelation[]>(() => extractResultData.value?.relations || [])
-const currentViewJson = computed<string>(() => {
-  if (!extractResultData.value) return ''
-  if (resultView.value === 'entities') return JSON.stringify(extractResultEntities.value, null, 2)
-  if (resultView.value === 'relations') return JSON.stringify(extractResultRelations.value, null, 2)
-  return JSON.stringify(extractResultData.value, null, 2)
-})
 
 async function loadProjects() {
   const res = await projectApi.list({ pageNum: 1, pageSize: 100 })
@@ -519,62 +536,20 @@ function onRelationTypeSelect(idx: number, value: string) {
   relationMappings.value[idx].propertyMappings = []
 }
 
-/** 基于映射规则和源数据，构造抽取后的结构化结果（用于右侧展示+JSON导出） */
-function buildExtractResultData(rows: Record<string, string>[]): ExtractResultData {
-  const entityMap = new Map<string, ResultEntity>()
-  const relationMap = new Map<string, ResultRelation>()
-
-  for (const row of rows) {
-    for (const em of entityMappings.value) {
-      if (!em.entityTypeName || !em.nameColumn) continue
-      const name = row[em.nameColumn]
-      if (!name) continue
-      const key = `${em.entityTypeName}::${name}`
-      if (!entityMap.has(key)) {
-        const props: Record<string, any> = {}
-        for (const pm of em.propertyMappings || []) {
-          if (pm.sourceColumn && pm.targetProperty && row[pm.sourceColumn]) {
-            props[pm.targetProperty] = row[pm.sourceColumn]
-          }
-        }
-        entityMap.set(key, { name, type: em.entityTypeName, properties: props })
-      }
-    }
-    for (const rm of relationMappings.value) {
-      if (!rm.relationTypeName || !rm.headNameColumn || !rm.tailNameColumn) continue
-      const head = row[rm.headNameColumn]
-      const tail = row[rm.tailNameColumn]
-      if (!head || !tail) continue
-      const headTypeName = rm.headEntityTypeName || ''
-      const tailTypeName = rm.tailEntityTypeName || ''
-      const key = `${rm.relationTypeName}::${head}::${tail}`
-      if (!relationMap.has(key)) {
-        const props: Record<string, any> = {}
-        for (const pm of rm.propertyMappings || []) {
-          if (pm.sourceColumn && pm.targetProperty && row[pm.sourceColumn]) {
-            props[pm.targetProperty] = row[pm.sourceColumn]
-          }
-        }
-        relationMap.set(key, {
-          relationType: rm.relationTypeName,
-          head: { name: head, type: headTypeName || undefined },
-          tail: { name: tail, type: tailTypeName || undefined },
-          properties: props,
-        })
-      }
-    }
-  }
-
+/** 解析后端任务 result，提取统计与实体/关系明细（后端已收集去重明细） */
+function parseTaskResult(task: any): ExtractResultData {
+  const resultData = task.result
+    ? (typeof task.result === 'string' ? JSON.parse(task.result) : task.result)
+    : {}
   return {
     summary: {
-      entities: result.value?.entities || entityMap.size,
-      relations: result.value?.relations || relationMap.size,
-      failed: result.value?.failed || 0,
-      costTime: result.value?.costTime,
+      entities: resultData.entities || 0,
+      relations: resultData.relations || 0,
+      failed: resultData.writeCount?.failed || 0,
+      costTime: task.duration,
     },
-    entities: Array.from(entityMap.values()),
-    relations: Array.from(relationMap.values()),
-    rawRows: rows,
+    entities: resultData.extractedEntities || [],
+    relations: resultData.extractedRelations || [],
   }
 }
 
@@ -582,7 +557,6 @@ async function handleExtract() {
   if (!fileInfo.value || !modelId.value) return
   extracting.value = true
   try {
-    const rows = fileInfo.value.previewRows
     const res = await extractionApi.structure({
       projectId: projectId.value,
       modelId: modelId.value,
@@ -591,14 +565,8 @@ async function handleExtract() {
       relationMappings: relationMappings.value.filter(rm => rm.relationTypeName && rm.headNameColumn && rm.tailNameColumn),
     })
     const task = res.data
-    const resultData = task.result ? JSON.parse(task.result) : {}
-    result.value = {
-      entities: resultData.entities || 0,
-      relations: resultData.relations || 0,
-      failed: resultData.writeCount?.failed || 0,
-      costTime: task.duration,
-    }
-    extractResultData.value = buildExtractResultData(rows)
+    extractResultData.value = parseTaskResult(task)
+    result.value = extractResultData.value.summary
     ElMessage.success('抽取完成')
     fileInfo.value = null
     await loadHistory()
@@ -613,7 +581,6 @@ async function loadHistory() {
   historyLoading.value = true
   try {
     const res = await extractionApi.list({
-      projectId: projectId.value as number,
       extractionType: 'STRUCTURE',
       pageNum: histPage.value,
       pageSize: histSize.value,
@@ -630,60 +597,8 @@ async function loadHistory() {
 async function viewHistory(row: any) {
   const res = await extractionApi.get(row.id)
   const task = res.data
-  const resultData = task.result
-    ? (typeof task.result === 'string' ? JSON.parse(task.result) : task.result)
-    : {}
-  result.value = {
-    entities: resultData.entities || 0,
-    relations: resultData.relations || 0,
-    failed: resultData.writeCount?.failed || 0,
-    costTime: task.duration,
-  }
-  const inputConfig = task.inputConfig
-    ? (typeof task.inputConfig === 'string' ? JSON.parse(task.inputConfig) : task.inputConfig)
-    : null
-  if (inputConfig && resultData.totalRows) {
-    const fakeRows: Record<string, string>[] = []
-    for (let i = 0; i < Math.min(10, resultData.totalRows); i++) {
-      fakeRows.push({ _index: String(i + 1) })
-    }
-    extractResultData.value = {
-      summary: { ...result.value },
-      entities: [],
-      relations: [],
-      rawRows: fakeRows,
-    }
-  } else {
-    extractResultData.value = null
-  }
-}
-
-function exportResultJson() {
-  const payload: any = extractResultData.value
-    ? {
-        exportAt: new Date().toISOString(),
-        projectId: projectId.value,
-        modelId: modelId.value,
-        ...extractResultData.value,
-      }
-    : {
-        exportAt: new Date().toISOString(),
-        projectId: projectId.value,
-        modelId: modelId.value,
-        summary: result.value,
-      }
-  const jsonStr = JSON.stringify(payload, null, 2)
-  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-  a.href = url
-  a.download = `structure_extract_result_${ts}.json`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-  ElMessage.success('已导出 JSON 文件')
+  extractResultData.value = parseTaskResult(task)
+  result.value = extractResultData.value.summary
 }
 
 function statusType(status: number): string {
@@ -771,12 +686,6 @@ onMounted(() => {
 }
 
 /* ============ 结果区与配置区精修 ============ */
-.result-extra-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .ext-form :deep(.el-divider--horizontal) {
   margin: 18px 0;
 }
@@ -893,30 +802,12 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.json-preview-card {
-  border: 1px solid var(--border-2);
-  border-radius: var(--r-md);
-  background: var(--bg-card);
-  overflow: hidden;
-  box-shadow: var(--shadow-1);
+.ext-entity-tag {
+  margin: 2px 4px 2px 0;
 }
 
-.json-preview-tabs {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-2);
-  background: var(--bg-soft);
-}
-
-.json-preview-body {
-  margin: 0;
-  padding: 14px 16px;
-  max-height: 320px;
-  overflow: auto;
-  font-family: 'SF Mono', Menlo, Consolas, monospace;
+.ext-node-type {
   font-size: 12px;
-  line-height: 1.7;
-  color: var(--text-1);
-  white-space: pre-wrap;
-  word-break: break-all;
+  color: var(--text-3);
 }
 </style>
