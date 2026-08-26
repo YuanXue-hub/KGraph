@@ -84,6 +84,22 @@
         <div class="panel-header">
           <span class="panel-title">图谱可视化</span>
           <div class="panel-actions">
+            <!-- 2D/3D 切换按钮（中间区域）—— 用 radio-button 组替代 segmented，兼容所有 EP 版本 -->
+            <el-radio-group
+              v-model="graphKind"
+              size="small"
+              style="margin-right: 8px"
+              @change="onGraphKindChange"
+            >
+              <el-radio-button value="2d">
+                <el-icon style="margin-right: 4px"><Grid /></el-icon>
+                2D
+              </el-radio-button>
+              <el-radio-button value="3d">
+                <el-icon style="margin-right: 4px"><Cpu /></el-icon>
+                3D
+              </el-radio-button>
+            </el-radio-group>
             <el-button size="small" :icon="Refresh" @click="reloadGraph">重新加载</el-button>
             <el-button size="small" :icon="FullScreen" @click="fitView">适应画布</el-button>
           </div>
@@ -161,10 +177,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, FullScreen, Coin, Connection, Close } from '@element-plus/icons-vue'
-import G6 from '@antv/g6'
+import { Search, Refresh, FullScreen, Coin, Connection, Close, Grid, Cpu } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { projectApi, modelApi, exploreApi } from '@/api'
+import { G6Adapter } from '@/utils/graph/G6Adapter'
+import { FG3DAdapter } from '@/utils/graph/FG3DAdapter'
+import type { GraphAdapter, GraphEdge, GraphKind, GraphNode } from '@/utils/graph/types'
 
 interface Project { id: string; projectName: string }
 interface ModelInfo { id: string; modelName: string; projectId?: string }
@@ -195,13 +213,14 @@ const keyword = ref('')
 const stats = ref<Stats | null>(null)
 const graphLoading = ref(false)
 const selectedItem = ref<DetailItem | null>(null)
+const graphKind = ref<GraphKind>('2d')
 
 const graphRef = ref<HTMLElement>()
 const pieRef = ref<HTMLElement>()
-let graph: any = null
+let adapter: GraphAdapter | null = null
 let pieChart: any = null
-const nodeSet = new Map<string, any>()
-const edgeSet = new Map<string, any>()
+const nodeSet = new Map<string, GraphNode>()
+const edgeSet = new Map<string, GraphEdge>()
 
 const modelGrouped = computed(() => {
   const map: Record<string, ModelInfo[]> = {}
@@ -310,14 +329,14 @@ async function loadInitialNodes() {
     const edges = data.edges || data.relations || []
     nodeSet.clear()
     edgeSet.clear()
-    initGraph()
+    ensureAdapter()
     nodes.forEach((n: any) => {
       const id = String(n.elementId ?? n.id)
       nodeSet.set(id, transformNode(n))
     })
     edges.forEach((e: any) => {
       const key = `${e.source}-${e.target}-${e.label || ''}`
-      edgeSet.set(key, transformEdge(e))
+      edgeSet.set(key, transformEdge(e, key))
     })
     refreshGraph()
   } finally {
@@ -325,25 +344,27 @@ async function loadInitialNodes() {
   }
 }
 
-function transformNode(n: any) {
+function transformNode(n: any): GraphNode {
   const id = String(n.elementId ?? n.id)
   const type = n.type || n.group || 'default'
+  const color = getColorByType(type)
   return {
     id,
     label: n.name || n.label || n.id,
     group: type,
-    style: { fill: getColorByType(type) },
+    color,
+    style: { fill: color },
     dataType: type,
     rawData: n
   }
 }
 
-function transformEdge(e: any) {
+function transformEdge(e: any, key?: string): GraphEdge {
   const source = String(e.source)
   const target = String(e.target)
   const label = e.label || e.relation || ''
   return {
-    id: `${source}-${target}-${label}-${Math.random().toString(36).slice(2, 6)}`,
+    id: key || `${source}-${target}-${label}-${Math.random().toString(36).slice(2, 6)}`,
     source,
     target,
     label,
@@ -359,93 +380,55 @@ function getColorByType(type?: string) {
   return TYPE_COLORS[Math.abs(hash) % TYPE_COLORS.length]
 }
 
-function initGraph() {
-  if (graph) {
-    graph.destroy()
-    graph = null
+function ensureAdapter() {
+  if (adapter && adapter.kind === graphKind.value && graphRef.value) return
+  // 销毁旧实例
+  if (adapter) {
+    adapter.destroy()
+    adapter = null
   }
   if (!graphRef.value) return
-  const width = graphRef.value.offsetWidth
-  const height = graphRef.value.offsetHeight
-  graph = new G6.Graph({
-    container: graphRef.value,
-    width: width || 800,
-    height: height || 600,
-    modes: {
-      default: ['drag-canvas', 'zoom-canvas', 'drag-node']
-    },
-    layout: {
-      type: 'force',
-      preventOverlap: true,
-      nodeStrength: -120,
-      edgeStrength: 0.7,
-      collideStrength: 0.8,
-      alpha: 0.3,
-      linkDistance: 140
-    },
-    defaultNode: {
-      size: 40,
-      style: { fill: '#409eff', stroke: '#fff', lineWidth: 2 },
-      labelCfg: { style: { fill: '#303133', fontSize: 11 }, position: 'bottom' }
-    },
-    defaultEdge: {
-      type: 'line',
-      style: { stroke: '#c0c4cc', lineWidth: 1.5, endArrow: { path: G6.Arrow.triangle(6, 8, 0), fill: '#c0c4cc' } },
-      labelCfg: { style: { fill: '#909399', fontSize: 10 } }
-    },
-    nodeStateStyles: {
-      selected: { stroke: '#409eff', lineWidth: 3, shadowColor: '#409eff', shadowBlur: 10 }
-    },
-    edgeStateStyles: {
-      selected: { stroke: '#409eff', lineWidth: 2.5 }
-    }
-  })
-
-  // 单击节点：选中并显示详情
-  graph.on('node:click', (evt: any) => {
-    const node = evt.item
-    const model = node.getModel()
-    selectNode(model)
-  })
-
-  // 单击边：选中并显示详情
-  graph.on('edge:click', (evt: any) => {
-    const edge = evt.item
-    const model = edge.getModel()
-    selectEdge(model)
-  })
-
-  // 双击节点：展开邻居
-  graph.on('node:dblclick', (evt: any) => {
-    const node = evt.item
-    const model = node.getModel()
-    expandNeighbors(model.id)
-  })
-
-  // 点击画布空白：取消选中
-  graph.on('canvas:click', () => {
-    clearSelection()
-  })
+  const handlers = {
+    onNodeClick: (node: GraphNode) => selectNodeFromModel(node),
+    onNodeDblClick: (node: GraphNode) => expandNeighbors(node.id),
+    onEdgeClick: (edge: GraphEdge) => selectEdgeFromModel(edge),
+    onCanvasClick: () => clearSelection()
+  }
+  adapter =
+    graphKind.value === '2d'
+      ? new G6Adapter({ handlers })
+      : new FG3DAdapter({ handlers })
+  adapter.mount(graphRef.value)
 }
 
-function selectNode(model: any) {
-  // 清除之前的选中状态
-  clearGraphStates()
-  graph.setItemState(model.id, 'selected', true)
+function onGraphKindChange() {
+  if (!modelId.value) return
+  // 切换模式：重建 adapter，用当前数据重绘
+  ensureAdapter()
+  refreshGraph()
+  if (selectedItem.value && adapter) {
+    if (selectedItem.value.kind === 'node') adapter.selectNode(selectedItem.value.id)
+    else adapter.selectEdge(selectedItem.value.id)
+  }
+}
+
+function selectNodeFromModel(model: GraphNode) {
+  if (!adapter) return
+  adapter.selectNode(model.id)
   const raw = model.rawData || {}
   selectedItem.value = {
     kind: 'node',
     id: model.id,
     name: raw.name || model.label,
-    type: raw.type || model.dataType,
-    color: model.style?.fill || getColorByType(raw.type),
+    type: raw.type || model.dataType || model.group,
+    color: model.color || getColorByType(raw.type),
     rawData: raw
   }
 }
 
-function selectEdge(model: any) {
-  clearGraphStates()
-  graph.setItemState(model.id, 'selected', true)
+function selectEdgeFromModel(model: GraphEdge) {
+  if (!adapter) return
+  adapter.selectEdge(model.id)
   const raw = model.rawData || {}
   const edgeData = raw.data || raw
   // 查找端点节点名称
@@ -465,28 +448,14 @@ function selectEdge(model: any) {
   }
 }
 
-function clearGraphStates() {
-  if (!graph) return
-  nodeSet.forEach((_, id) => {
-    try { graph.setItemState(id, 'selected', false) } catch { /* node may not exist */ }
-  })
-  edgeSet.forEach((edge) => {
-    try { graph.setItemState(edge.id, 'selected', false) } catch { /* edge may not exist */ }
-  })
-}
-
 function clearSelection() {
-  clearGraphStates()
+  adapter?.clearSelection()
   selectedItem.value = null
 }
 
 function refreshGraph() {
-  if (!graph) return
-  graph.data({
-    nodes: Array.from(nodeSet.values()),
-    edges: Array.from(edgeSet.values())
-  })
-  graph.render()
+  if (!adapter) return
+  adapter.setData(Array.from(nodeSet.values()), Array.from(edgeSet.values()))
 }
 
 async function expandNeighbors(nodeId: string) {
@@ -505,7 +474,7 @@ async function expandNeighbors(nodeId: string) {
   edges.forEach((e: any) => {
     const key = `${e.source}-${e.target}-${e.label || ''}`
     if (!edgeSet.has(key)) {
-      edgeSet.set(key, transformEdge(e))
+      edgeSet.set(key, transformEdge(e, key))
     }
   })
   if (added > 0) {
@@ -555,25 +524,25 @@ async function reloadGraph() {
 }
 
 function fitView() {
-  if (graph) graph.fitView(20)
+  adapter?.fitView(20)
 }
 
 function handleResize() {
-  if (graph && graphRef.value) {
-    graph.changeSize(graphRef.value.offsetWidth, graphRef.value.offsetHeight)
+  if (adapter && graphRef.value) {
+    adapter.resize(graphRef.value.offsetWidth, graphRef.value.offsetHeight)
   }
   if (pieChart) pieChart.resize()
 }
 
 // 节点详情面板展开/收起时，等待 CSS 过渡结束后调整图谱画布尺寸
 watch(selectedItem, () => {
-  if (!graph || !graphRef.value) return
+  if (!adapter || !graphRef.value) return
   // 过渡过程中持续同步几次，结束后最终修正
   const steps = [60, 140, 260]
   steps.forEach((delay) => {
     setTimeout(() => {
-      if (graph && graphRef.value) {
-        graph.changeSize(graphRef.value.offsetWidth, graphRef.value.offsetHeight)
+      if (adapter && graphRef.value) {
+        adapter.resize(graphRef.value.offsetWidth, graphRef.value.offsetHeight)
       }
     }, delay)
   })
@@ -586,9 +555,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
-  if (graph) {
-    graph.destroy()
-    graph = null
+  if (adapter) {
+    adapter.destroy()
+    adapter = null
   }
   if (pieChart) {
     pieChart.dispose()

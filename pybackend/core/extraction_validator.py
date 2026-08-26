@@ -300,6 +300,246 @@ def validate_w3_entity_dedup(payload: LlmExtractionPayload, rep: QualityReport) 
 
 
 # ============================================================================
+# W3.5 事件时序承接补边（新增：零风险纯补边，不删除任何原有断言）
+#
+# 原理：对所有 type == "事件" 的实体，基于它们在关系中出现的 vt_from
+#   或紧邻的时间锚点推断出事件时间，按时间 ISO 升序排队。
+#   对时间顺序上相邻、且原文出现位置也相邻（跨度不超过全文 30%）的两个事件，
+#   自动补一条 predicate="随后发生"/"紧随" 的 [:RELATION] 承接边，
+#   confidence=0.55，source=post_hoc_temporal_chaining，status=CURRENT。
+# 目的：消灭事件孤立点，提升网络连通性。
+# ============================================================================
+def _event_vt_from_relations(event_name: str, payload: LlmExtractionPayload) -> Optional[str]:
+    """从关系两端里找事件出现时的最早 vt_from。"""
+    best = None
+    for r in payload.relations:
+        hit = r.subject == event_name or r.object == event_name
+        if hit and r.vt_from:
+            if best is None or r.vt_from < best:
+                best = r.vt_from
+    return best
+
+
+def _event_span_guess(event_name: str, payload: LlmExtractionPayload) -> Optional[Tuple[int, int]]:
+    for e in payload.entities:
+        if e.canonicalName == event_name:
+            return e.span.start, e.span.end
+    # 关系 evidence 里找事件名原文位置
+    for r in payload.relations:
+        for s in r.evidenceSpans:
+            if s.start <= s.end:
+                return s.start, s.end
+    return None
+
+
+def validate_w35_temporal_event_chaining(
+    payload: LlmExtractionPayload, rep: QualityReport, text: str
+) -> None:
+    event_entries = [
+        e for e in payload.entities
+        if (e.type or "").strip() == "事件" and e.canonicalName.strip()
+    ]
+    if len(event_entries) < 2:
+        return
+    # 1) 每个事件推断时间 + 原文跨度
+    enriched: List[Dict[str, Any]] = []
+    for e in event_entries:
+        vt = _event_vt_from_relations(e.canonicalName, payload)
+        span = _event_span_guess(e.canonicalName, payload)
+        enriched.append({
+            "name": e.canonicalName,
+            "vt": vt,
+            "span": span,
+        })
+    # 2) 排序：先按 vt ISO，其次按原文 span 起点
+    def sort_key(x):
+        return (x["vt"] or "9999-12-31", (x["span"][0] if x["span"] else 10_000_000))
+    enriched.sort(key=sort_key)
+
+    L = max(1, len(text))
+    added = 0
+    # 3) 相邻时序事件（vt 非空且严格不同）补承接边
+    for i in range(len(enriched) - 1):
+        a = enriched[i]
+        b = enriched[i + 1]
+        # 时间必须可比且 a.vt < b.vt
+        cmp_v = _iso_cmp(a["vt"], b["vt"]) if a["vt"] and b["vt"] else None
+        time_adjacent = (cmp_v is not None and cmp_v < 0)
+        # 原文位置也要接近（两者 span 中心距离 ≤ 全文 30% 字符数，或者一端无 span 就信任时间）
+        proximate = True
+        if a["span"] and b["span"]:
+            ca = (a["span"][0] + a["span"][1]) // 2
+            cb = (b["span"][0] + b["span"][1]) // 2
+            if abs(ca - cb) > int(0.30 * L):
+                proximate = False
+        if not (time_adjacent and proximate):
+            continue
+        # 4) 避免重复承接：检查 payload.relations 里是否已有 (a,b) 方向的边
+        dup = any((r.subject == a["name"] and r.object == b["name"])
+                  for r in payload.relations)
+        if dup:
+            continue
+        # 合并 vt
+        vt_from = a["vt"]
+        vt_to = b["vt"] if a["vt"] != b["vt"] else None
+        from core.extraction_schema import ExtractedRelation, EvidenceSpan
+        payload.relations.append(ExtractedRelation(
+            subject=a["name"],
+            predicate="随后发生",
+            object=b["name"],
+            subjectType="事件",
+            objectType="事件",
+            vt_from=vt_from,
+            vt_to=vt_to,
+            vt_precision_from="day" if vt_from else "unknown",
+            vt_precision_to="day" if vt_to else "unknown",
+            status="CURRENT",
+            confidence=0.55,
+            evidenceSpans=[EvidenceSpan(start=0, end=0)],
+        ))
+        added += 1
+    if added > 0:
+        rep.add("WARNING", "W35_TEMPORAL_CHAINING_ADDED",
+                f"事件时序承接补边 × {added} 条（ predicate='随后发生'，confidence=0.55，"
+                f"仅对时间先后相邻且原文位置接近的事件对补边）")
+
+
+# ============================================================================
+# W3.6 孤立静态实体兜底补边（零风险纯补边，代码层强制零孤立节点）
+#
+# 原理：统计所有在关系中出现过的实体名 → 找出静态实体（type≠"事件"）中从未
+#   在任何关系的 subject/object 位置出现过的「孤立实体」→ 为每个孤立实体
+#   找一个最合理的邻居（原文中离它最近、且已被关系覆盖的静态实体），补一条
+#   predicate="文本共现关联" 的弱语义 [:RELATION] 边。
+# 目的：消灭离散点，保证网络连通性（即使 LLM 的"零孤立铁律"没兑现，代码层兜底）。
+# ============================================================================
+_WEAK_PREDICATES_BY_CTX = ["文本共现关联", "上下文提及", "篇章关联"]
+
+
+def validate_w36_isolated_static_entity_patch(
+    payload: LlmExtractionPayload, rep: QualityReport, text: str
+) -> None:
+    # 1) 收集已被关系覆盖的实体名集合
+    covered: set[str] = set()
+    for r in payload.relations:
+        if r.subject:
+            covered.add(r.subject)
+        if r.object:
+            covered.add(r.object)
+
+    # 2) 找出所有静态孤立实体（非 "事件" 类型 且 未被任何关系覆盖 且有合理 span）
+    static_entities: List[Dict[str, Any]] = []
+    for e in payload.entities:
+        etype = (e.type or "").strip()
+        if etype == "事件":
+            continue
+        if e.canonicalName in covered:
+            continue
+        if not e.canonicalName.strip():
+            continue
+        s_start, s_end = e.span.start, e.span.end
+        if s_start <= 0 and s_end <= 0:
+            # span 是 (0,0) 的兜底不处理（LLM完全没定位到的实体，可能是幻觉）
+            continue
+        static_entities.append({
+            "name": e.canonicalName,
+            "type": etype,
+            "span_center": (s_start + s_end) // 2,
+        })
+
+    if not static_entities:
+        return  # 没有孤立静态实体，无需处理
+
+    # 3) 收集候选邻居：已被关系覆盖的静态实体（排除事件，避免把孤立实体全挂到事件上）
+    neighbor_candidates: List[Dict[str, Any]] = []
+    for e in payload.entities:
+        etype = (e.type or "").strip()
+        if etype == "事件":
+            continue
+        if e.canonicalName not in covered:
+            continue
+        if not e.canonicalName.strip():
+            continue
+        s_start, s_end = e.span.start, e.span.end
+        neighbor_candidates.append({
+            "name": e.canonicalName,
+            "type": etype,
+            "span_center": (s_start + s_end) // 2,
+        })
+
+    # 若没有候选邻居，则退而求其次：把所有被覆盖的实体（含事件）当候选
+    if not neighbor_candidates:
+        for e in payload.entities:
+            if e.canonicalName in covered and e.canonicalName.strip():
+                neighbor_candidates.append({
+                    "name": e.canonicalName,
+                    "type": (e.type or "").strip(),
+                    "span_center": (e.span.start + e.span.end) // 2,
+                })
+
+    if not neighbor_candidates:
+        return  # 实在没邻居可以连
+
+    added = 0
+    L = max(1, len(text))
+    import random
+    rng = random.Random(42)  # 确定性随机，避免每次重抽谓词都变
+
+    for iso in static_entities:
+        # 找原文中心距离最近的候选邻居（距离 ≤ 全文 60% 才连，避免把毫不相干的实体硬连）
+        best_n = None
+        best_dist = int(0.60 * L) + 1
+        for n in neighbor_candidates:
+            if n["name"] == iso["name"]:
+                continue
+            dist = abs(iso["span_center"] - n["span_center"])
+            if dist < best_dist:
+                best_dist = dist
+                best_n = n
+        if best_n is None:
+            continue
+        # 避免重复边
+        dup = any(
+            (r.subject == iso["name"] and r.object == best_n["name"]) or
+            (r.subject == best_n["name"] and r.object == iso["name"])
+            for r in payload.relations
+        )
+        if dup:
+            continue
+        predicate = rng.choice(_WEAK_PREDICATES_BY_CTX)
+        # 方向：倾向于让更泛的概念做宾语（短的 canonicalName 更可能是泛概念）
+        if len(iso["name"]) <= len(best_n["name"]):
+            subj, subj_t = best_n["name"], best_n["type"]
+            obj, obj_t = iso["name"], iso["type"]
+        else:
+            subj, subj_t = iso["name"], iso["type"]
+            obj, obj_t = best_n["name"], best_n["type"]
+        from core.extraction_schema import ExtractedRelation, EvidenceSpan
+        payload.relations.append(ExtractedRelation(
+            subject=subj,
+            predicate=predicate,
+            object=obj,
+            subjectType=subj_t or "未分类",
+            objectType=obj_t or "未分类",
+            vt_from=None,
+            vt_to=None,
+            vt_precision_from="unknown",
+            vt_precision_to="unknown",
+            status="CURRENT",
+            confidence=0.50,
+            evidenceSpans=[EvidenceSpan(start=0, end=0)],
+        ))
+        added += 1
+        covered.add(iso["name"])  # 连一次就够了，不再参与后续连边的候选邻居（避免爆炸）
+
+    if added > 0:
+        rep.add("WARNING", "W36_ISOLATED_ENTITY_PATCHED",
+                f"孤立静态实体兜底补边 × {added} 条（ predicate 从"
+                f" {_WEAK_PREDICATES_BY_CTX} 中按最近邻居选取，"
+                f" confidence=0.50，确保零离散点入库）")
+
+
+# ============================================================================
 # W4 因果 DAG 无环（A→B→C→A 这种必须打断）
 # 宽松策略：仍做环检测与打断（因为 Neo4j 图查询若有环会导致 Agent 无限递归查询，
 #   这是结构安全性必须保证的），但打断策略从"丢最低置信边"改为"仍保留边，
@@ -417,6 +657,8 @@ def run_quality_pipeline(
     validate_w1_spans(payload, text, rep)
     validate_w2_temporal(payload, rep)
     validate_w3_entity_dedup(payload, rep)
+    validate_w35_temporal_event_chaining(payload, rep, text)
+    validate_w36_isolated_static_entity_patch(payload, rep, text)  # 新增：孤立实体兜底补边
     validate_w4_causal_dag(payload, rep)
     validate_w5_low_confidence(payload, rep)
     # 计数统计

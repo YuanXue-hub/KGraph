@@ -251,29 +251,75 @@ def _parse_relations(
     name_set: Dict[str, str], alias_map: Dict[str, str],
     rep: QualityReport,
 ) -> List[ExtractedRelation]:
-    """主语/宾语必须命中实体表（含别名映射）；证据句必须能在原文定位，否则丢弃。"""
+    """主语/宾语引用解析（允许实体表外名称 → 后处理 ensure_node 会补占位节点）。
+
+    解析顺序：
+      1. 精确命中 name_set
+      2. alias_map 别名映射（阶段1 coreferenceChains 产生）
+      3. 【新增】名称包含 + 类型匹配（如「省疾控中心」 ⊆ 「广东省疾病预防控制中心」，且 type=组织/疾控中心）
+      4. 【新增】字符串相似度 ≥ 0.80 的近邻命中（错别字/遗漏字容错）
+      5. 完全没命中 → 仍然保留（允许 create placeholder，不 DROP 关系）
+    证据句必须能在原文中定位（否则丢弃——没有证据的关系不可信）。
+    """
     relations: List[ExtractedRelation] = []
 
-    def _resolve(name: str) -> Optional[str]:
-        """实体引用解析：直接命中 / 别名映射；失败返回 None。"""
+    def _jaccard_sim(a: str, b: str) -> float:
+        sa, sb = set(a), set(b)
+        return len(sa & sb) / max(1, len(sa | sb))
+
+    def _resolve(name: str) -> Optional[Tuple[str, Optional[str]]]:
+        """返回 (规范实体名, 已知类型或None)。没命中实体表时类型返回None，后续占位节点。"""
         n = (name or "").strip()
+        if not n:
+            return None
+        # 1) 精确
         if n in name_set:
-            return n
+            return n, name_set[n]
+        # 2) 别名映射
         mapped = alias_map.get(n)
         if mapped and mapped in name_set:
-            return mapped
-        return None
+            return mapped, name_set[mapped]
+        # 3) 名称包含（优先同类型 -> 更长的 canonicalName 命中）
+        best_match = None
+        best_len = 0
+        for canon, ctype in name_set.items():
+            if n in canon or canon in n:
+                if len(canon) > best_len:
+                    best_match = (canon, ctype)
+                    best_len = len(canon)
+        if best_match:
+            rep.add("WARNING", "REL_NAME_SUBSTRING_MATCHED",
+                    f"关系引用 '{n}' 名称包含匹配到 canonical='{best_match[0]}' (type={best_match[1]})")
+            return best_match
+        # 4) 近邻 Jaccard 字符合集 ≥ 0.80
+        best_sim = 0.0
+        best_neighbor = None
+        for canon, ctype in name_set.items():
+            sim = _jaccard_sim(n, canon)
+            if sim >= 0.80 and sim > best_sim:
+                best_sim = sim
+                best_neighbor = (canon, ctype)
+        if best_neighbor:
+            rep.add("WARNING", "REL_NAME_JACCARD_MATCHED",
+                    f"关系引用 '{n}' Jaccard≈{best_sim:.2f} 匹配到 canonical='{best_neighbor[0]}'")
+            return best_neighbor
+        # 5) 完全没命中 → 允许，类型返回 None（占位节点 未分类实体）
+        return n, None
+
+    seen_triples: Dict[Tuple[str, str, str], int] = {}  # 三元组key → relations下标
 
     for r in rel_json.get("relations") or []:
         if not isinstance(r, dict):
             continue
-        subj = _resolve(str(r.get("subject") or ""))
-        obj = _resolve(str(r.get("object") or ""))
+        subj_resolved = _resolve(str(r.get("subject") or ""))
+        obj_resolved = _resolve(str(r.get("object") or ""))
         pred = str(r.get("predicate") or "").strip()
-        if not subj or not obj or not pred:
-            rep.add("WARNING", "REL_REF_MISS_DROPPED",
-                    f"关系引用实体表外名称已丢弃: {r.get('subject')} -[{pred}]-> {r.get('object')}")
+        if not subj_resolved or not obj_resolved or not pred:
+            rep.add("WARNING", "REL_EMPTY_FIELD_DROPPED",
+                    f"关系主谓宾有空字段已丢弃: {r.get('subject')} -[{pred}]-> {r.get('object')}")
             continue
+        subj, subj_type_hint = subj_resolved
+        obj, obj_type_hint = obj_resolved
         if subj == obj:
             rep.add("WARNING", "REL_SELF_LOOP_DROPPED",
                     f"自环关系已丢弃: {subj} -[{pred}]-> {obj}")
@@ -297,9 +343,37 @@ def _parse_relations(
         vt_from = str(r.get("vt_from") or "").strip() or None
         vt_to = str(r.get("vt_to") or "").strip() or None
 
+        # ========== 三元组去重（subj/pred/obj 全同取最大置信度保留一条）==========
+        dedup_key = (subj, pred, obj)
+        if dedup_key in seen_triples:
+            idx = seen_triples[dedup_key]
+            if conf > relations[idx].confidence:
+                # 替换为更高置信度的那条，保留更多信息
+                relations[idx] = ExtractedRelation(
+                    subject=subj, predicate=pred, object=obj,
+                    subjectType=subj_type_hint or relations[idx].subjectType,
+                    objectType=obj_type_hint or relations[idx].objectType,
+                    vt_from=vt_from or relations[idx].vt_from,
+                    vt_to=vt_to or relations[idx].vt_to,
+                    vt_precision_from=_infer_precision(vt_from or relations[idx].vt_from),
+                    vt_precision_to=_infer_precision(vt_to or relations[idx].vt_to),
+                    status=status, confidence=conf,
+                    evidenceSpans=[ev_span],
+                )
+                rep.add("WARNING", "REL_TRIPLE_DEDUP_REPLACED",
+                        f"重复三元组 {subj}-[{pred}]->{obj} 替换为更高置信度 conf={conf:.2f}")
+            else:
+                rep.add("WARNING", "REL_TRIPLE_DEDUP_SKIPPED",
+                        f"重复三元组 {subj}-[{pred}]->{obj} (本项conf={conf:.2f}) 丢弃")
+            continue
+        seen_triples[dedup_key] = len(relations)
+
+        # 如果映射后子/宾type已知，就用已知的；否则用解析阶段hint
+        subj_t = name_set.get(subj, subj_type_hint)
+        obj_t = name_set.get(obj, obj_type_hint)
         relations.append(ExtractedRelation(
             subject=subj, predicate=pred, object=obj,
-            subjectType=name_set[subj], objectType=name_set[obj],
+            subjectType=subj_t, objectType=obj_t,
             vt_from=vt_from, vt_to=vt_to,
             vt_precision_from=_infer_precision(vt_from),
             vt_precision_to=_infer_precision(vt_to),
