@@ -1,237 +1,395 @@
 <template>
-  <ExtractionLayout
-    theme-color="#409eff"
-    config-title="抽取配置"
-    result-title="抽取结果"
-    history-title="抽取历史记录"
-  >
-    <template #config>
-      <el-tabs v-model="activeConfigTab" class="config-tabs">
-        <el-tab-pane label="抽取配置" name="extract">
-          <el-form label-width="100px" class="ext-form">
-            <el-form-item label="所属项目">
-              <el-select v-model="projectId" placeholder="选择项目" filterable style="width: 100%" @change="onProjectChange">
-                <el-option v-for="p in projects" :key="p.id" :label="p.projectName" :value="p.id" />
-              </el-select>
-            </el-form-item>
+  <div class="llm-ext-page">
+    <el-tabs v-model="pageTab" class="llm-ext-page-tabs" type="card">
+      <el-tab-pane label="知识抽取" name="extract">
+        <ExtractionLayout
+            theme-color="#409eff"
+            config-title="抽取配置"
+            result-title="抽取结果"
+            history-title="抽取历史记录"
+          >
+            <template #config>
+              <el-tabs v-model="activeConfigTab" class="config-tabs">
+                <el-tab-pane label="抽取配置" name="extract">
+                  <el-form label-width="100px" class="ext-form">
+                    <el-form-item label="所属项目">
+                      <el-select v-model="projectId" placeholder="选择项目" filterable style="width: 100%" @change="onProjectChange">
+                        <el-option v-for="p in projects" :key="p.id" :label="p.projectName" :value="p.id" />
+                      </el-select>
+                    </el-form-item>
 
-            <el-form-item label="图谱模型">
-              <el-select v-model="modelId" placeholder="请先选择项目" filterable style="width: 100%" @change="onModelChange">
-                <el-option v-for="m in models" :key="m.id" :label="m.modelName" :value="m.id" />
-              </el-select>
-            </el-form-item>
+                    <el-form-item label="图谱模型">
+                      <el-select v-model="modelId" placeholder="请先选择项目" filterable style="width: 100%" @change="onModelChange">
+                        <el-option v-for="m in models" :key="m.id" :label="m.modelName" :value="m.id" />
+                      </el-select>
+                    </el-form-item>
 
-            <el-form-item label="语料来源">
-              <div class="corpus-source">
-                <div class="corpus-tabs">
-                  <div class="corpus-tab" :class="{ active: corpusMode === 'corpus' }" @click="onCorpusModeChange('corpus')">
-                    选择语料
+                    <el-form-item label="语料来源">
+                      <div class="corpus-source">
+                        <div class="corpus-tabs">
+                          <div class="corpus-tab" :class="{ active: corpusMode === 'corpus' }" @click="onCorpusModeChange('corpus')">
+                            选择语料
+                          </div>
+                          <div class="corpus-tab" :class="{ active: corpusMode === 'manual' }" @click="onCorpusModeChange('manual')">
+                            手动输入
+                          </div>
+                        </div>
+                        <div class="corpus-content">
+                          <el-select v-if="corpusMode === 'corpus'" v-model="corpusId" placeholder="选择语料" filterable style="width: 100%" @change="loadCorpusContent">
+                            <el-option v-for="c in corpusList" :key="c.id" :label="c.title" :value="c.id">
+                              <span style="display: inline-flex; justify-content: space-between; width: 100%; gap: 12px; align-items: center;">
+                                <span style="font-weight: 500; color: #1f2329;">{{ c.title }}</span>
+                                <span v-if="projectNameById(c.projectId)" style="color: #86909c; font-size: 12px; flex-shrink: 0;">
+                                  {{ projectNameById(c.projectId) }}
+                                </span>
+                              </span>
+                            </el-option>
+                          </el-select>
+                          <el-input
+                            v-model="inputText"
+                            type="textarea"
+                            :rows="8"
+                            :placeholder="corpusMode === 'corpus' ? '选择语料后，文本内容将展示在此' : '请输入需要抽取的文本内容'"
+                            :disabled="corpusMode === 'corpus'"
+                          />
+                        </div>
+                      </div>
+                    </el-form-item>
+
+                    <el-form-item>
+                      <el-button type="primary" :loading="extracting" :disabled="!canExtract" @click="handleExtract" class="ext-btn-action">
+                        开始抽取
+                      </el-button>
+                    </el-form-item>
+                  </el-form>
+                </el-tab-pane>
+
+                <el-tab-pane label="实体关系配置" name="ontology">
+                  <div class="ontology-config">
+                    <div class="ontology-section">
+                      <h4 class="ontology-title">实体类型</h4>
+                      <p class="ontology-sub">从模型加载: {{ modelEntityTypes.length }} 个 | 自定义: {{ customEntityTypes.length }} 个</p>
+                      <div class="tag-list">
+                        <el-tag
+                          v-for="t in modelEntityTypes"
+                          :key="'m-' + t"
+                          closable
+                          type="info"
+                          size="large"
+                          @close="removeModelEntity(t)"
+                          class="ontology-tag"
+                        >{{ t }}</el-tag>
+                        <el-tag
+                          v-for="(t, i) in customEntityTypes"
+                          :key="'c-' + i"
+                          closable
+                          type="primary"
+                          size="large"
+                          @close="customEntityTypes.splice(i, 1)"
+                          class="ontology-tag"
+                        >{{ t }}</el-tag>
+                      </div>
+                      <div class="tag-input-row">
+                        <el-input v-model="newEntityType" placeholder="输入实体类型名称" @keyup.enter="addEntityType" />
+                        <el-button type="primary" @click="addEntityType">添加</el-button>
+                      </div>
+                    </div>
+
+                    <el-divider />
+
+                    <div class="ontology-section">
+                      <h4 class="ontology-title">关系类型</h4>
+                      <p class="ontology-sub">从模型加载: {{ modelRelationTypes.length }} 个 | 自定义: {{ customRelationTypes.length }} 个</p>
+                      <div class="tag-list">
+                        <el-tag
+                          v-for="t in modelRelationTypes"
+                          :key="'m-' + t"
+                          closable
+                          type="info"
+                          size="large"
+                          @close="removeModelRelation(t)"
+                          class="ontology-tag"
+                        >{{ t }}</el-tag>
+                        <el-tag
+                          v-for="(t, i) in customRelationTypes"
+                          :key="'c-' + i"
+                          closable
+                          type="success"
+                          size="large"
+                          @close="customRelationTypes.splice(i, 1)"
+                          class="ontology-tag"
+                        >{{ t }}</el-tag>
+                      </div>
+                      <div class="tag-input-row">
+                        <el-input v-model="newRelationType" placeholder="输入关系类型名称" @keyup.enter="addRelationType" />
+                        <el-button type="success" @click="addRelationType">添加</el-button>
+                      </div>
+                    </div>
+
+                    <el-divider />
+
+                    <div class="ontology-actions">
+                      <el-button @click="clearOntologyConfig">清空配置</el-button>
+                      <el-button type="primary" @click="activeConfigTab = 'extract'">返回抽取</el-button>
+                    </div>
                   </div>
-                  <div class="corpus-tab" :class="{ active: corpusMode === 'manual' }" @click="onCorpusModeChange('manual')">
-                    手动输入
-                  </div>
+                </el-tab-pane>
+              </el-tabs>
+            </template>
+
+            <template #result-extra>
+              <div v-if="result" class="ext-stat-tags">
+                <el-tag type="primary" effect="plain">实体 {{ result.entities?.length || 0 }}</el-tag>
+                <el-tag type="success" effect="plain">关系 {{ result.relations?.length || 0 }}</el-tag>
+                <el-tag type="warning" effect="plain" v-if="result.costTime">耗时 {{ result.costTime }}ms</el-tag>
+              </div>
+            </template>
+
+            <template #result>
+              <el-empty v-if="!result" description="点击「开始抽取」查看结果" />
+
+              <div v-else class="ext-result">
+                <div v-if="highlightedText" class="ext-highlight-box">
+                  <h4 class="ext-section-title">原文标注</h4>
+                  <div class="ext-highlight-text" v-html="highlightedText"></div>
                 </div>
-                <div class="corpus-content">
-                  <el-select v-if="corpusMode === 'corpus'" v-model="corpusId" placeholder="选择语料" filterable style="width: 100%" @change="loadCorpusContent">
-                    <el-option v-for="c in corpusList" :key="c.id" :label="c.title" :value="c.id">
-                      <span style="display: inline-flex; justify-content: space-between; width: 100%; gap: 12px; align-items: center;">
-                        <span style="font-weight: 500; color: #1f2329;">{{ c.title }}</span>
-                        <span v-if="projectNameById(c.projectId)" style="color: #86909c; font-size: 12px; flex-shrink: 0;">
-                          {{ projectNameById(c.projectId) }}
-                        </span>
-                      </span>
-                    </el-option>
+
+                <el-tabs class="mt-12">
+                  <el-tab-pane :label="`实体列表 (${entities.length})`">
+                    <el-table :data="pagedEntities" border>
+                      <el-table-column type="index" width="60" align="center" :index="(i: number) => (entityPage - 1) * ENTITY_PAGE_SIZE + i + 1" />
+                      <el-table-column prop="name" label="实体名称" min-width="180" />
+                      <el-table-column prop="type" label="类型" width="140">
+                        <template #default="{ row }">
+                          <el-tag :color="typeColorMap[row.type]" effect="dark">{{ row.type }}</el-tag>
+                        </template>
+                      </el-table-column>
+                      <el-table-column label="属性" min-width="300">
+                        <template #default="{ row }">
+                          <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
+                          <el-tag v-for="(v, k) in row.properties" :key="k" class="entity-tag" style="margin: 2px 4px 2px 0;">{{ k }}: {{ v }}</el-tag>
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                    <div class="ext-pagination" v-if="entities.length > ENTITY_PAGE_SIZE">
+                      <el-pagination v-model:current-page="entityPage" :page-size="ENTITY_PAGE_SIZE" :total="entities.length" layout="total, prev, pager, next" />
+                    </div>
+                  </el-tab-pane>
+
+                  <el-tab-pane :label="`关系列表 (${relations.length})`">
+                    <el-table :data="pagedRelations" border>
+                      <el-table-column type="index" width="60" align="center" :index="(i: number) => (relPage - 1) * REL_PAGE_SIZE + i + 1" />
+                      <el-table-column prop="head" label="头实体" min-width="180" />
+                      <el-table-column prop="relation" label="关系" width="140">
+                        <template #default="{ row }">
+                          <el-tag type="success">{{ row.relation }}</el-tag>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="tail" label="尾实体" min-width="180" />
+                      <el-table-column label="属性" min-width="280">
+                        <template #default="{ row }">
+                          <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
+                          <el-tag v-for="(v, k) in row.properties" :key="k" class="entity-tag" style="margin: 2px 4px 2px 0;">{{ k }}: {{ v }}</el-tag>
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                    <div class="ext-pagination" v-if="relations.length > REL_PAGE_SIZE">
+                      <el-pagination v-model:current-page="relPage" :page-size="REL_PAGE_SIZE" :total="relations.length" layout="total, prev, pager, next" />
+                    </div>
+                  </el-tab-pane>
+                </el-tabs>
+              </div>
+            </template>
+
+            <template #history-extra>
+              <el-button size="small" :icon="Refresh" @click="loadHistory">刷新</el-button>
+            </template>
+
+            <template #history>
+              <el-table :data="history" border v-loading="historyLoading" size="small">
+                <el-table-column type="index" min-width="50" align="center" />
+                <el-table-column prop="extractionType" label="类型" min-width="70" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="extractionTypeColor(row.extractionType)" size="small">{{ row.extractionType || 'LLM' }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="modelId" label="模型ID" min-width="110" align="center" />
+                <el-table-column prop="duration" label="耗时(ms)" min-width="90" align="center" />
+                <el-table-column prop="status" label="状态" min-width="70" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="createTime" label="抽取时间" min-width="150">
+                  <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
+                </el-table-column>
+                <el-table-column label="操作" min-width="130" align="center">
+                  <template #default="{ row }">
+                    <el-button size="small" @click="viewHistory(row)">查看</el-button>
+                    <el-button size="small" @click="exportExtractionTask(row)">导出</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div class="ext-pagination">
+                <el-pagination v-model:current-page="histPage" v-model:page-size="histSize" :total="histTotal" layout="total, prev, pager, next" @current-change="loadHistory" />
+              </div>
+            </template>
+        </ExtractionLayout>
+      </el-tab-pane>
+
+      <el-tab-pane label="质量评估" name="evaluate">
+        <div class="eval-layout">
+          <!-- 评估配置 -->
+          <div class="eval-panel">
+            <div class="eval-panel-header">
+              <span class="eval-panel-title"><span class="eval-bar"></span>评估配置</span>
+            </div>
+            <div class="eval-panel-body">
+              <div class="eval-config">
+                <div class="eval-source-row">
+                  <span class="eval-label">评估数据来源</span>
+                  <el-radio-group v-model="evalSource" @change="onEvalSourceChange">
+                    <el-radio-button value="current">当前抽取结果</el-radio-button>
+                    <el-radio-button value="history">历史抽取记录</el-radio-button>
+                  </el-radio-group>
+                </div>
+
+                <div v-if="evalSource === 'history'" class="eval-task-row">
+                  <el-select
+                    v-model="evalTaskId"
+                    filterable
+                    placeholder="选择历史抽取任务"
+                    style="flex: 1"
+                    :loading="evalHistLoading"
+                    @change="onEvalTaskChange"
+                  >
+                    <el-option
+                      v-for="t in evalHistory"
+                      :key="t.id"
+                      :value="t.id"
+                      :label="`#${t.id} · ${t.extractionType || 'LLM'} · ${formatTime(t.createTime)} · ${statusText(t.status)}`"
+                    />
                   </el-select>
-                  <el-input
-                    v-model="inputText"
-                    type="textarea"
-                    :rows="8"
-                    :placeholder="corpusMode === 'corpus' ? '选择语料后，文本内容将展示在此' : '请输入需要抽取的文本内容'"
-                    :disabled="corpusMode === 'corpus'"
-                  />
+                  <el-button :icon="Refresh" @click="loadEvalHistory">刷新</el-button>
+                </div>
+
+                <el-alert
+                  v-if="!evalTarget"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                  :title="evalSource === 'current' ? '当前暂无抽取结果' : '请选择一条历史抽取任务'"
+                  :description="evalSource === 'current'
+                    ? '请先在「知识抽取」Tab 完成一次抽取，或切换到「历史抽取记录」选择历史数据直接评估'
+                    : '选择后将自动加载该任务的原文、实体与关系数据，无需重新抽取'"
+                />
+
+                <div v-else class="eval-meta">
+                  <el-tag type="primary" effect="plain">实体 {{ evalTarget.entities?.length || 0 }}</el-tag>
+                  <el-tag type="success" effect="plain">关系 {{ evalTarget.relations?.length || 0 }}</el-tag>
+                  <span class="eval-meta-text">
+                    {{ evalSource === 'current' ? '评估对象：当前抽取结果' : `评估对象：历史任务 #${evalTaskId}` }}；内在指标全量计算，LLM 裁判按抽样判定
+                  </span>
+                </div>
+
+                <div class="eval-actions">
+                  <span class="eval-label">LLM 裁判抽样数量</span>
+                  <el-select v-model="evalSampleSize" style="width: 110px">
+                    <el-option v-for="n in [10, 20, 30, 50]" :key="n" :value="n" :label="`${n} 条`" />
+                  </el-select>
+                  <el-button type="primary" :loading="evaluating" :disabled="!evalTarget" @click="handleEvaluate">开始评估</el-button>
                 </div>
               </div>
-            </el-form-item>
-
-            <el-form-item>
-              <el-button type="primary" :loading="extracting" :disabled="!canExtract" @click="handleExtract" class="ext-btn-action">
-                开始抽取
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
-
-        <el-tab-pane label="实体关系配置" name="ontology">
-          <div class="ontology-config">
-            <div class="ontology-section">
-              <h4 class="ontology-title">实体类型</h4>
-              <p class="ontology-sub">从模型加载: {{ modelEntityTypes.length }} 个 | 自定义: {{ customEntityTypes.length }} 个</p>
-              <div class="tag-list">
-                <el-tag
-                  v-for="t in modelEntityTypes"
-                  :key="'m-' + t"
-                  closable
-                  type="info"
-                  size="large"
-                  @close="removeModelEntity(t)"
-                  class="ontology-tag"
-                >{{ t }}</el-tag>
-                <el-tag
-                  v-for="(t, i) in customEntityTypes"
-                  :key="'c-' + i"
-                  closable
-                  type="primary"
-                  size="large"
-                  @close="customEntityTypes.splice(i, 1)"
-                  class="ontology-tag"
-                >{{ t }}</el-tag>
-              </div>
-              <div class="tag-input-row">
-                <el-input v-model="newEntityType" placeholder="输入实体类型名称" @keyup.enter="addEntityType" />
-                <el-button type="primary" @click="addEntityType">添加</el-button>
-              </div>
-            </div>
-
-            <el-divider />
-
-            <div class="ontology-section">
-              <h4 class="ontology-title">关系类型</h4>
-              <p class="ontology-sub">从模型加载: {{ modelRelationTypes.length }} 个 | 自定义: {{ customRelationTypes.length }} 个</p>
-              <div class="tag-list">
-                <el-tag
-                  v-for="t in modelRelationTypes"
-                  :key="'m-' + t"
-                  closable
-                  type="info"
-                  size="large"
-                  @close="removeModelRelation(t)"
-                  class="ontology-tag"
-                >{{ t }}</el-tag>
-                <el-tag
-                  v-for="(t, i) in customRelationTypes"
-                  :key="'c-' + i"
-                  closable
-                  type="success"
-                  size="large"
-                  @close="customRelationTypes.splice(i, 1)"
-                  class="ontology-tag"
-                >{{ t }}</el-tag>
-              </div>
-              <div class="tag-input-row">
-                <el-input v-model="newRelationType" placeholder="输入关系类型名称" @keyup.enter="addRelationType" />
-                <el-button type="success" @click="addRelationType">添加</el-button>
-              </div>
-            </div>
-
-            <el-divider />
-
-            <div class="ontology-actions">
-              <el-button @click="clearOntologyConfig">清空配置</el-button>
-              <el-button type="primary" @click="activeConfigTab = 'extract'">返回抽取</el-button>
             </div>
           </div>
-        </el-tab-pane>
-      </el-tabs>
-    </template>
 
-    <template #result-extra>
-      <div v-if="result" class="ext-stat-tags">
-        <el-tag type="primary" effect="plain">实体 {{ result.entities?.length || 0 }}</el-tag>
-        <el-tag type="success" effect="plain">关系 {{ result.relations?.length || 0 }}</el-tag>
-        <el-tag type="warning" effect="plain" v-if="result.costTime">耗时 {{ result.costTime }}ms</el-tag>
-      </div>
-    </template>
+          <!-- 评估报告 -->
+          <template v-if="evalResult">
+            <div class="eval-panel">
+              <div class="eval-panel-header">
+                <span class="eval-panel-title"><span class="eval-bar"></span>评估报告</span>
+                <div class="eval-header-extra">
+                  <el-tag v-if="evalResult?.duration" type="info" effect="plain">耗时 {{ evalResult?.duration }}ms</el-tag>
+                  <el-tag v-if="evalResult?.tokenConsumed" type="info" effect="plain">Token {{ evalResult?.tokenConsumed }}</el-tag>
+                </div>
+              </div>
+              <div class="eval-panel-body">
+                <div class="eval-overview">
+                  <div class="eval-overall-score">
+                    <div class="eval-score-num" :class="scoreClass(evalResult?.overall)">{{ formatScore(evalResult?.overall) }}</div>
+                    <div class="eval-score-label">综合得分（LLM 裁判均值）</div>
+                  </div>
+                  <div class="eval-intrinsic-grid">
+                    <div class="eval-stat" v-for="s in intrinsicStats" :key="s.label">
+                      <div class="eval-stat-value">{{ s.value }}</div>
+                      <div class="eval-stat-label">{{ s.label }}</div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="isolatedList.length" class="eval-isolated">
+                  <span class="eval-isolated-label">孤立实体（{{ isolatedList.length }}）：</span>
+                  <el-tag
+                    v-for="n in isolatedList.slice(0, 20)"
+                    :key="n"
+                    size="small"
+                    type="warning"
+                    effect="plain"
+                    style="margin: 2px 4px 2px 0;"
+                  >{{ n }}</el-tag>
+                  <span v-if="isolatedList.length > 20" class="eval-isolated-more">等共 {{ isolatedList.length }} 个</span>
+                </div>
+              </div>
+            </div>
 
-    <template #result>
-      <el-empty v-if="!result" description="点击「开始抽取」查看结果" />
-
-      <div v-else class="ext-result">
-        <div v-if="highlightedText" class="ext-highlight-box">
-          <h4 class="ext-section-title">原文标注</h4>
-          <div class="ext-highlight-text" v-html="highlightedText"></div>
+            <!-- LLM 裁判明细 -->
+            <div class="eval-panel">
+              <div class="eval-panel-header">
+                <span class="eval-panel-title"><span class="eval-bar"></span>LLM 裁判指标（G-Eval）</span>
+                <div class="eval-header-extra">
+                  <span class="eval-sample-text">关系抽样 {{ evalResult?.sampledRelations }} 条 / 实体抽样 {{ evalResult?.sampledEntities }} 条</span>
+                </div>
+              </div>
+              <div class="eval-panel-body">
+                <el-table :data="judgeRows" border>
+                  <el-table-column type="expand">
+                    <template #default="{ row }">
+                      <div class="eval-detail-list">
+                        <div v-if="!row.details.length" class="eval-detail-empty">无明细数据</div>
+                        <div v-for="(d, i) in row.details" :key="i" class="eval-detail-item">
+                          <el-tag :type="d.pass ? 'success' : 'danger'" size="small" effect="dark">{{ d.pass ? '通过' : '未通过' }}</el-tag>
+                          <span class="eval-detail-item-text">{{ formatDetailItem(row.key, d) }}</span>
+                          <span v-if="d.reason" class="eval-detail-reason">{{ d.reason }}</span>
+                        </div>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="name" label="评估指标" min-width="150" />
+                  <el-table-column label="得分" width="200">
+                    <template #default="{ row }">
+                      <el-progress
+                        v-if="row.score !== null && row.score !== undefined"
+                        :percentage="Math.round(row.score * 100)"
+                        :color="progressColor(row.score)"
+                        :stroke-width="14"
+                        :text-inside="true"
+                      />
+                      <span v-else class="eval-score-none">—</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="reason" label="整体结论" min-width="320">
+                    <template #default="{ row }">
+                      <span class="eval-reason-text">{{ row.reason || '-' }}</span>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+            </div>
+          </template>
+          <el-empty v-else-if="evalTarget" description="点击「开始评估」生成质量报告" />
         </div>
-
-        <el-tabs class="mt-12">
-          <el-tab-pane :label="`实体列表 (${entities.length})`">
-            <el-table :data="pagedEntities" border>
-              <el-table-column type="index" width="60" align="center" :index="(i: number) => (entityPage - 1) * ENTITY_PAGE_SIZE + i + 1" />
-              <el-table-column prop="name" label="实体名称" min-width="180" />
-              <el-table-column prop="type" label="类型" width="140">
-                <template #default="{ row }">
-                  <el-tag :color="typeColorMap[row.type]" effect="dark">{{ row.type }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="属性" min-width="300">
-                <template #default="{ row }">
-                  <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
-                  <el-tag v-for="(v, k) in row.properties" :key="k" class="entity-tag" style="margin: 2px 4px 2px 0;">{{ k }}: {{ v }}</el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
-            <div class="ext-pagination" v-if="entities.length > ENTITY_PAGE_SIZE">
-              <el-pagination v-model:current-page="entityPage" :page-size="ENTITY_PAGE_SIZE" :total="entities.length" layout="total, prev, pager, next" />
-            </div>
-          </el-tab-pane>
-
-          <el-tab-pane :label="`关系列表 (${relations.length})`">
-            <el-table :data="pagedRelations" border>
-              <el-table-column type="index" width="60" align="center" :index="(i: number) => (relPage - 1) * REL_PAGE_SIZE + i + 1" />
-              <el-table-column prop="head" label="头实体" min-width="180" />
-              <el-table-column prop="relation" label="关系" width="140">
-                <template #default="{ row }">
-                  <el-tag type="success">{{ row.relation }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="tail" label="尾实体" min-width="180" />
-              <el-table-column label="属性" min-width="280">
-                <template #default="{ row }">
-                  <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
-                  <el-tag v-for="(v, k) in row.properties" :key="k" class="entity-tag" style="margin: 2px 4px 2px 0;">{{ k }}: {{ v }}</el-tag>
-                </template>
-              </el-table-column>
-            </el-table>
-            <div class="ext-pagination" v-if="relations.length > REL_PAGE_SIZE">
-              <el-pagination v-model:current-page="relPage" :page-size="REL_PAGE_SIZE" :total="relations.length" layout="total, prev, pager, next" />
-            </div>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-    </template>
-
-    <template #history-extra>
-      <el-button size="small" :icon="Refresh" @click="loadHistory">刷新</el-button>
-    </template>
-
-    <template #history>
-      <el-table :data="history" border v-loading="historyLoading" size="small">
-        <el-table-column type="index" min-width="50" align="center" />
-        <el-table-column prop="extractionType" label="类型" min-width="70" align="center">
-          <template #default="{ row }">
-            <el-tag :type="extractionTypeColor(row.extractionType)" size="small">{{ row.extractionType || 'LLM' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="modelId" label="模型ID" min-width="110" align="center" />
-        <el-table-column prop="duration" label="耗时(ms)" min-width="90" align="center" />
-        <el-table-column prop="status" label="状态" min-width="70" align="center">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="抽取时间" min-width="150">
-          <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" min-width="130" align="center">
-          <template #default="{ row }">
-            <el-button size="small" @click="viewHistory(row)">查看</el-button>
-            <el-button size="small" @click="exportExtractionTask(row)">导出</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-      <div class="ext-pagination">
-        <el-pagination v-model:current-page="histPage" v-model:page-size="histSize" :total="histTotal" layout="total, prev, pager, next" @current-change="loadHistory" />
-      </div>
-    </template>
-  </ExtractionLayout>
+      </el-tab-pane>
+    </el-tabs>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -246,7 +404,12 @@ interface Project { id: number; projectName: string }
 interface ModelInfo { id: number; modelName: string }
 interface Corpus { id: number; title: string; content?: string; source?: string; projectId?: number | string }
 interface ExtractEntity { name: string; type: string; properties?: Record<string, any> }
-interface ExtractRelation { head: string; relation: string; tail: string; properties?: Record<string, any> }
+interface ExtractRelation {
+  head: string; relation: string; tail: string; properties?: Record<string, any>
+  status?: string; confidence?: number; vt_from?: string; vt_to?: string
+  subjectType?: string; objectType?: string
+  evidenceSpans?: { start: number; end: number }[]
+}
 interface ExtractResult {
   entities: ExtractEntity[]
   relations: ExtractRelation[]
@@ -576,9 +739,170 @@ function formatTime(t?: string): string {
   return t.replace('T', ' ').substring(0, 19)
 }
 
+
+// ==================== 质量评估（G-Eval 风格 LLM-as-Judge） ====================
+const pageTab = ref('extract')
+const evaluating = ref(false)
+const evalSampleSize = ref(30)
+
+// 评估数据来源：当前抽取结果 / 历史抽取记录（无需每次先抽取）
+const evalSource = ref<'current' | 'history'>('current')
+const evalHistory = ref<any[]>([])
+const evalHistLoading = ref(false)
+const evalTaskId = ref<number | undefined>()
+const evalData = ref<ExtractResult | null>(null)
+
+/** 评估目标：按来源取当前抽取结果或已选历史任务数据 */
+const evalTarget = computed<ExtractResult | null>(() =>
+  evalSource.value === 'current' ? result.value : evalData.value
+)
+
+async function loadEvalHistory() {
+  evalHistLoading.value = true
+  try {
+    const res = await extractionApi.list({
+      pageNum: 1,
+      pageSize: 50,
+      sortField: 'createTime',
+      sortOrder: 'descend',
+    })
+    evalHistory.value = res.data?.records || res.data || []
+  } finally {
+    evalHistLoading.value = false
+  }
+}
+
+async function onEvalTaskChange(id: number | undefined) {
+  evalData.value = null
+  evalResult.value = null
+  if (!id) return
+  try {
+    const res = await extractionApi.get(id)
+    evalData.value = parseResult(res.data)
+    if (!evalData.value) ElMessage.warning('该任务结果解析失败，请换一条')
+  } catch {
+    // request 层已提示
+  }
+}
+
+function onEvalSourceChange() {
+  evalResult.value = null
+  if (evalSource.value === 'history' && !evalHistory.value.length) {
+    loadEvalHistory()
+  }
+}
+
+interface EvalResult {
+  intrinsic: {
+    entityCount: number
+    relationCount: number
+    isolatedEntities: string[]
+    isolatedRate: number
+    avgDegree: number
+    evidenceCoverage: number
+    lowConfidenceRate: number | null
+  }
+  llmJudge: Record<string, { score: number | null; reason: string; details: any[] }>
+  overall: number | null
+  sampledRelations: number
+  sampledEntities: number
+  tokenConsumed?: number
+  duration?: number
+}
+const evalResult = ref<EvalResult | null>(null)
+
+const JUDGE_METRIC_NAMES: Record<string, string> = {
+  tripleFaithfulness: '三元组忠实度',
+  predicateReasonableness: '谓词合理性',
+  bitemporalCorrectness: '双时态标注正确性',
+  evidenceValidity: '证据句有效性',
+  entityCorrectness: '实体边界正确性',
+}
+
+const judgeRows = computed(() => {
+  if (!evalResult.value?.llmJudge) return []
+  return Object.entries(evalResult.value.llmJudge).map(([key, v]) => ({
+    key,
+    name: JUDGE_METRIC_NAMES[key] || key,
+    score: v.score,
+    reason: v.reason,
+    details: v.details || [],
+  }))
+})
+
+const intrinsicStats = computed(() => {
+  const ins = evalResult.value?.intrinsic
+  if (!ins) return []
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '-' : `${(v * 100).toFixed(1)}%`)
+  return [
+    { label: '实体总数', value: ins.entityCount },
+    { label: '关系总数', value: ins.relationCount },
+    { label: '平均度', value: ins.avgDegree },
+    { label: '孤立实体率', value: pct(ins.isolatedRate) },
+    { label: '证据覆盖率', value: pct(ins.evidenceCoverage) },
+    { label: '低置信率(<0.6)', value: pct(ins.lowConfidenceRate) },
+  ]
+})
+
+const isolatedList = computed(() => evalResult.value?.intrinsic?.isolatedEntities || [])
+
+function scoreClass(score: number | null | undefined): string {
+  if (score === null || score === undefined) return ''
+  if (score >= 0.8) return 'is-good'
+  if (score >= 0.6) return 'is-mid'
+  return 'is-bad'
+}
+
+function formatScore(score: number | null | undefined): string {
+  if (score === null || score === undefined) return '—'
+  return (score * 100).toFixed(1)
+}
+
+function progressColor(score: number): string {
+  if (score >= 0.8) return '#67c23a'
+  if (score >= 0.6) return '#e6a23c'
+  return '#f56c6c'
+}
+
+function formatDetailItem(key: string, d: any): string {
+  if (key === 'entityCorrectness') return `${d.name}（${d.type}）`
+  const parts = [`${d.head} → ${d.predicate} → ${d.tail}`]
+  if (key === 'bitemporalCorrectness' && d.status) {
+    const vt = [d.vt_from, d.vt_to].filter(Boolean).join('~')
+    parts.push(`[${d.status}${vt ? ' ' + vt : ''}]`)
+  }
+  if (key === 'evidenceValidity' && d.evidence) parts.push(`证据：「${d.evidence}」`)
+  return parts.join(' ')
+}
+
+async function handleEvaluate() {
+  const target = evalTarget.value
+  if (!target || (!target.entities?.length && !target.relations?.length)) {
+    ElMessage.warning(evalSource.value === 'current' ? '请先完成一次抽取' : '请选择一条历史抽取任务')
+    return
+  }
+  evaluating.value = true
+  try {
+    const text = target.inputText || target.text || (evalSource.value === 'current' ? inputText.value : '')
+    const res = await extractionApi.evaluate({
+      text,
+      entities: target.entities,
+      relations: target.relations,
+      sampleSize: evalSampleSize.value,
+    })
+    evalResult.value = res.data
+    ElMessage.success('评估完成')
+  } catch {
+    // request 层已提示
+  } finally {
+    evaluating.value = false
+  }
+}
+
 onMounted(() => {
   loadProjects()
   loadHistory()
+  loadEvalHistory()
 })
 </script>
 
@@ -811,5 +1135,321 @@ onMounted(() => {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 8px;
+}
+
+/* ==================== 页面级 Tab ==================== */
+.llm-ext-page {
+  padding: 20px 24px 28px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* ExtractionLayout 自带的页面级 padding/max-width 与外层 .llm-ext-page 重复，
+   嵌套后剥离，保证两个 Tab 的面板左边缘/顶部对齐 */
+.llm-ext-page :deep(.ext-layout) {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+}
+
+/* 页签样式与深度学习抽取页（.dl-tabs）完全统一：card 型 + 渐变顶条 */
+.llm-ext-page-tabs > :deep(.el-tabs__header) {
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border-2);
+}
+
+.llm-ext-page-tabs > :deep(.el-tabs__header .el-tabs__nav) {
+  border: none;
+  gap: 8px;
+}
+
+.llm-ext-page-tabs > :deep(.el-tabs__header .el-tabs__item) {
+  font-weight: 500;
+  font-size: 14px;
+  height: 40px;
+  line-height: 40px;
+  color: var(--text-2);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-2) !important;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  border-bottom: none !important;
+  transition: all var(--t-fast);
+  padding: 0 22px;
+}
+
+.llm-ext-page-tabs > :deep(.el-tabs__header .el-tabs__item:hover) {
+  color: var(--brand-primary);
+  border-color: var(--border-1) !important;
+}
+
+.llm-ext-page-tabs > :deep(.el-tabs__header .el-tabs__item.is-active) {
+  color: var(--brand-primary);
+  background: var(--bg-card);
+  border-color: var(--border-2) !important;
+  border-bottom: 1px solid var(--bg-card) !important;
+  font-weight: 600;
+  position: relative;
+  top: 1px;
+}
+
+.llm-ext-page-tabs > :deep(.el-tabs__header .el-tabs__item.is-active::before) {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent));
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+
+/* ==================== 质量评估面板 ==================== */
+.eval-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 18px; /* 与知识抽取 Tab 的 .ext-main 间距节奏一致 */
+}
+
+.eval-panel {
+  background: var(--bg-card, #ffffff);
+  border-radius: var(--r-lg, 12px);
+  border: 1px solid var(--border-2, #e5e6eb);
+  box-shadow: var(--shadow-1, 0 1px 3px rgba(0, 0, 0, 0.04));
+  overflow: hidden;
+}
+
+.eval-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-2, #e5e6eb);
+  background: var(--bg-soft, #f7f8fa);
+}
+
+.eval-panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1, #1d2129);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.eval-bar {
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, #409eff, var(--brand-accent, #646cff));
+}
+
+.eval-panel-body {
+  padding: 20px;
+}
+
+.eval-header-extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eval-sample-text {
+  font-size: 12px;
+  color: var(--text-3, #86909c);
+}
+
+.eval-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.eval-source-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eval-task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eval-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.eval-meta-text {
+  font-size: 13px;
+  color: var(--text-3, #86909c);
+  margin-left: 8px;
+}
+
+.eval-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eval-label {
+  font-size: 13px;
+  color: var(--text-2, #4e5969);
+}
+
+.eval-overview {
+  display: flex;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.eval-overall-score {
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 16px;
+  border-right: 1px solid var(--border-2, #e5e6eb);
+}
+
+.eval-score-num {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text-1, #1d2129);
+}
+
+.eval-score-num.is-good {
+  color: #67c23a;
+}
+
+.eval-score-num.is-mid {
+  color: #e6a23c;
+}
+
+.eval-score-num.is-bad {
+  color: #f56c6c;
+}
+
+.eval-score-label {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-3, #86909c);
+}
+
+.eval-intrinsic-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.eval-stat {
+  background: var(--bg-soft, #f7f8fa);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eval-stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-1, #1d2129);
+}
+
+.eval-stat-label {
+  font-size: 12px;
+  color: var(--text-3, #86909c);
+}
+
+.eval-isolated {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border-2, #e5e6eb);
+}
+
+.eval-isolated-label {
+  font-size: 13px;
+  color: var(--text-2, #4e5969);
+  margin-right: 4px;
+}
+
+.eval-isolated-more {
+  font-size: 12px;
+  color: var(--text-3, #86909c);
+}
+
+.eval-detail-list {
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eval-detail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.eval-detail-item-text {
+  font-size: 13px;
+  color: var(--text-1, #1d2129);
+}
+
+.eval-detail-reason {
+  font-size: 12px;
+  color: var(--text-3, #86909c);
+}
+
+.eval-detail-empty {
+  font-size: 13px;
+  color: var(--text-3, #86909c);
+  padding: 4px 0;
+}
+
+.eval-score-none {
+  color: var(--text-3, #86909c);
+}
+
+.eval-reason-text {
+  font-size: 13px;
+  color: var(--text-2, #4e5969);
+}
+
+/* ==================== 响应式（窄屏评估面板堆叠） ==================== */
+@media (max-width: 992px) {
+  .eval-overview {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .eval-overall-score {
+    border-right: none;
+    border-bottom: 1px solid var(--border-2, #e5e6eb);
+    padding: 0 0 16px;
+    min-width: 0;
+  }
+
+  .eval-intrinsic-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .eval-intrinsic-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eval-actions {
+    flex-wrap: wrap;
+  }
 }
 </style>

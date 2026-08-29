@@ -369,6 +369,9 @@ export const extractionApi = {
   }) {
     return request({ url: '/extraction/llm', method: 'post', data, timeout: 300000 })
   },
+  evaluate(data: { text: string; entities: any[]; relations: any[]; sampleSize?: number }) {
+    return request({ url: '/extraction/evaluate', method: 'post', data, timeout: 600000 })
+  },
   kos(data: {
     projectId?: number | string
     modelId: number | string

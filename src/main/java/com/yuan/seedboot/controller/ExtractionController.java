@@ -1,9 +1,11 @@
 package com.yuan.seedboot.controller;
 
+import cn.hutool.json.JSONObject;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuan.seedboot.common.BaseResponse;
 import com.yuan.seedboot.common.PageRequest;
 import com.yuan.seedboot.common.ResultUtils;
+import com.yuan.seedboot.config.PythonServiceClient;
 import com.yuan.seedboot.exception.ErrorCode;
 import com.yuan.seedboot.exception.ThrowUtils;
 import com.yuan.seedboot.model.entity.ExtractionTask;
@@ -38,6 +40,9 @@ public class ExtractionController {
 
     @Resource
     private StructureExtractionService structureExtractionService;
+
+    @Resource
+    private PythonServiceClient pythonServiceClient;
 
     @PostMapping("/llm")
     @Operation(summary = "LLM 知识抽取（调 Python，Python 抽取后直接写入 Neo4j）")
@@ -85,6 +90,24 @@ public class ExtractionController {
         User loginUser = userService.getLoginUser(httpRequest);
         ExtractionTask task = structureExtractionService.executeExtraction(request, loginUser);
         return ResultUtils.success(task);
+    }
+
+    @PostMapping("/evaluate")
+    @Operation(summary = "LLM 抽取质量评估（内在指标 + G-Eval 风格 LLM-as-Judge，调 Python）")
+    public BaseResponse<Map<String, Object>> evaluate(@RequestBody Map<String, Object> request, HttpServletRequest httpRequest) {
+        ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
+        userService.getLoginUser(httpRequest);
+        JSONObject result = pythonServiceClient.evaluate(request);
+        // hutool 会把 JSON null 解析为 JSONNull 对象，Jackson 无法序列化；
+        // 这里用 Jackson 重新解析原始 JSON 字符串，null 还原为 Java null
+        try {
+            Map<String, Object> plain = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(result.toString(), Map.class);
+            return ResultUtils.success(plain);
+        } catch (Exception e) {
+            throw new com.yuan.seedboot.exception.BusinessException(ErrorCode.OPERATION_ERROR,
+                    "评估结果解析失败: " + e.getMessage());
+        }
     }
 
     @GetMapping("/list")

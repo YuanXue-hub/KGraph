@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.extraction import router as extraction_router
+from api.evaluation import router as evaluation_router
 from api.kos import router as kos_router
 from api.dl import router as dl_router
 from api.train import router as train_router
@@ -49,6 +50,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(extraction_router)
+app.include_router(evaluation_router)
 app.include_router(kos_router)
 app.include_router(dl_router)
 app.include_router(train_router)

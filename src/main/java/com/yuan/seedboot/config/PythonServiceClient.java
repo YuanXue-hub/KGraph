@@ -112,6 +112,19 @@ public class PythonServiceClient {
     }
 
     /**
+     * 调用 Python 抽取质量评估接口（G-Eval 风格 LLM-as-Judge + 内在指标）
+     *
+     * @param payload 评估请求: {text, entities:[], relations:[], sampleSize}
+     * @return Python 响应 JSON: {intrinsic:{}, llmJudge:{}, overall, duration, tokenConsumed}
+     */
+    public JSONObject evaluate(Map<String, Object> payload) {
+        if (StrUtil.isBlank(String.valueOf(payload.get("text")))) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "待评估原文为空");
+        }
+        return doPost(pythonServiceUrl + "/api/evaluate", payload, null, "EVAL");
+    }
+
+    /**
      * 通用 POST 请求封装
      */
     private JSONObject doPost(String url, Map<String, Object> payload, Long modelId, String type) {
