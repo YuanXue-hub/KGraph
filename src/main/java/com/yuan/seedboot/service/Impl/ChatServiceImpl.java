@@ -30,7 +30,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public Flux<ServerSentEvent<String>> chatAgentStream(String message, Long modelId, String sessionId, Long userId) {
+    public Flux<ServerSentEvent<String>> chatAgentStream(String message, Long modelId, String sessionId, Long userId, Long llmModelId) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("message", message);
         payload.put("modelId", modelId != null ? modelId : 0);
@@ -39,6 +39,9 @@ public class ChatServiceImpl implements ChatService {
         }
         if (userId != null) {
             payload.put("userId", userId);
+        }
+        if (llmModelId != null) {
+            payload.put("llmModelId", llmModelId);
         }
 
         String targetUrl = pythonServiceUrl + "/api/chat/agent/stream";
@@ -57,6 +60,18 @@ public class ChatServiceImpl implements ChatService {
                 .timeout(Duration.ofSeconds(60))
                 .doOnError(e -> log.error("Chat Agent SSE proxy error", e))
                 .doOnComplete(() -> log.info("Chat Agent SSE proxy stream completed"));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public java.util.List<Map<String, Object>> listLlmModels() {
+        String targetUrl = pythonServiceUrl + "/api/chat/llm-models";
+        return webClient.get()
+                .uri(targetUrl)
+                .retrieve()
+                .bodyToMono(java.util.List.class)
+                .timeout(Duration.ofSeconds(10))
+                .block();
     }
 
     @Override

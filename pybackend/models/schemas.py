@@ -99,3 +99,4 @@ class ChatAgentRequest(BaseModel):
     modelId: int
     sessionId: Optional[str] = None
     userId: Optional[int] = None
+    llmModelId: Optional[int] = None  # LLM 模型（llm_model 表 id），空则用默认

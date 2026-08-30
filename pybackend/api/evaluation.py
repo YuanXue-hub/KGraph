@@ -298,6 +298,21 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
         m = _judge_safe(llm_client, "证据句有效性", _CRITERIA_EVIDENCE, text, ev_items)
         judge["evidenceValidity"] = m
         total_tokens += m["tokens"]
+    elif req.entities:
+        # 有实体但无关系：关系级指标按缺失计 0 分，避免综合得分虚高
+        _missing = {
+            "tripleFaithfulness": "三元组忠实度",
+            "predicateReasonableness": "谓词合理性",
+            "bitemporalCorrectness": "双时态标注正确性",
+            "evidenceValidity": "证据句有效性",
+        }
+        for key, label in _missing.items():
+            judge[key] = {
+                "score": 0.0,
+                "reason": f"抽取结果无任何关系，{label}按缺失计 0 分（实体孤立率 100%，图谱无结构）",
+                "details": [],
+                "tokens": 0,
+            }
 
     if ent_sample:
         ent_items = [

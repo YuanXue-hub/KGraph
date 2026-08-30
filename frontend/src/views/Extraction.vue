@@ -246,19 +246,12 @@
             </div>
             <div class="eval-panel-body">
               <div class="eval-config">
-                <div class="eval-source-row">
-                  <span class="eval-label">评估数据来源</span>
-                  <el-radio-group v-model="evalSource" @change="onEvalSourceChange">
-                    <el-radio-button value="current">当前抽取结果</el-radio-button>
-                    <el-radio-button value="history">历史抽取记录</el-radio-button>
-                  </el-radio-group>
-                </div>
-
-                <div v-if="evalSource === 'history'" class="eval-task-row">
+                <div class="eval-task-row">
+                  <span class="eval-label">抽取结果</span>
                   <el-select
                     v-model="evalTaskId"
                     filterable
-                    placeholder="选择历史抽取任务"
+                    placeholder="选择抽取任务"
                     style="flex: 1"
                     :loading="evalHistLoading"
                     @change="onEvalTaskChange"
@@ -278,18 +271,28 @@
                   type="info"
                   :closable="false"
                   show-icon
-                  :title="evalSource === 'current' ? '当前暂无抽取结果' : '请选择一条历史抽取任务'"
-                  :description="evalSource === 'current'
-                    ? '请先在「知识抽取」Tab 完成一次抽取，或切换到「历史抽取记录」选择历史数据直接评估'
-                    : '选择后将自动加载该任务的原文、实体与关系数据，无需重新抽取'"
+                  title="请选择抽取结果"
+                  description="选择抽取任务后自动加载其实体与关系数据，并按任务关联语料自动带入评估原文"
                 />
 
                 <div v-else class="eval-meta">
                   <el-tag type="primary" effect="plain">实体 {{ evalTarget.entities?.length || 0 }}</el-tag>
                   <el-tag type="success" effect="plain">关系 {{ evalTarget.relations?.length || 0 }}</el-tag>
-                  <span class="eval-meta-text">
-                    {{ evalSource === 'current' ? '评估对象：当前抽取结果' : `评估对象：历史任务 #${evalTaskId}` }}；内在指标全量计算，LLM 裁判按抽样判定
-                  </span>
+                  <span class="eval-meta-text">评估对象：抽取任务 #{{ evalTaskId }}；内在指标全量计算，LLM 裁判按抽样判定</span>
+                </div>
+
+                <div v-if="evalTarget" class="eval-text-row">
+                  <span class="eval-label">评估语料</span>
+                  <template v-if="evalTextUsed">
+                    <el-tag :type="evalTextOverride ? 'warning' : 'info'" effect="plain" size="small">
+                      {{ evalTextOverride ? (evalTextOverrideFrom === 'corpus' ? '已选语料' : '手动指定') : '自动带入' }}
+                    </el-tag>
+                    <span class="eval-meta-text">{{ evalTextUsed.length }} 字</span>
+                  </template>
+                  <el-tag v-else type="danger" effect="plain" size="small">缺少原文</el-tag>
+                  <el-button size="small" @click="openCorpusPick">选择语料</el-button>
+                  <el-button size="small" @click="evalManualVisible = true">手动输入</el-button>
+                  <el-button v-if="evalTextOverride" size="small" text type="danger" @click="clearEvalTextOverride">恢复自动</el-button>
                 </div>
 
                 <div class="eval-actions">
@@ -302,6 +305,37 @@
               </div>
             </div>
           </div>
+
+          <!-- 评估原文：选择语料对话框 -->
+          <el-dialog v-model="evalCorpusVisible" title="选择评估原文语料" width="520px" append-to-body>
+            <el-select
+              v-model="evalCorpusPickId"
+              filterable
+              placeholder="搜索并选择语料"
+              style="width: 100%"
+            >
+              <el-option v-for="c in corpusList" :key="c.id" :label="c.title" :value="c.id" />
+            </el-select>
+            <div v-if="evalCorpusPickPreview" class="eval-corpus-preview">{{ evalCorpusPickPreview }}</div>
+            <template #footer>
+              <el-button @click="evalCorpusVisible = false">取消</el-button>
+              <el-button type="primary" :disabled="!evalCorpusPickId" @click="confirmCorpusPick">使用该语料原文</el-button>
+            </template>
+          </el-dialog>
+
+          <!-- 评估原文：手动输入对话框 -->
+          <el-dialog v-model="evalManualVisible" title="手动输入评估原文" width="640px" append-to-body>
+            <el-input
+              v-model="evalManualText"
+              type="textarea"
+              :rows="10"
+              placeholder="粘贴待评估的原文文本（需与抽取结果对应）"
+            />
+            <template #footer>
+              <el-button @click="evalManualVisible = false">取消</el-button>
+              <el-button type="primary" :disabled="!evalManualText.trim()" @click="confirmManualText">确定</el-button>
+            </template>
+          </el-dialog>
 
           <!-- 评估报告 -->
           <template v-if="evalResult">
@@ -745,17 +779,63 @@ const pageTab = ref('extract')
 const evaluating = ref(false)
 const evalSampleSize = ref(30)
 
-// 评估数据来源：当前抽取结果 / 历史抽取记录（无需每次先抽取）
-const evalSource = ref<'current' | 'history'>('current')
+// 评估配置：选择抽取任务 + 评估语料即可评估，无需先抽取
 const evalHistory = ref<any[]>([])
 const evalHistLoading = ref(false)
 const evalTaskId = ref<number | undefined>()
 const evalData = ref<ExtractResult | null>(null)
 
-/** 评估目标：按来源取当前抽取结果或已选历史任务数据 */
-const evalTarget = computed<ExtractResult | null>(() =>
-  evalSource.value === 'current' ? result.value : evalData.value
-)
+/** 评估目标：已选抽取任务的数据 */
+const evalTarget = computed<ExtractResult | null>(() => evalData.value)
+
+// 评估原文：默认自动带入（任务原文/当前输入），支持选择语料或手动指定覆盖
+const evalTextOverride = ref('')
+const evalTextOverrideFrom = ref<'corpus' | 'manual'>('manual')
+const evalCorpusVisible = ref(false)
+const evalCorpusPickId = ref<number | undefined>()
+const evalManualVisible = ref(false)
+const evalManualText = ref('')
+
+/** 实际使用的评估语料原文（覆盖优先，其次任务自动带入） */
+const evalTextUsed = computed(() => {
+  if (evalTextOverride.value) return evalTextOverride.value
+  const target = evalTarget.value
+  return target?.inputText || target?.text || ''
+})
+
+const evalCorpusPickPreview = computed(() => {
+  const c = corpusList.value.find(x => x.id === evalCorpusPickId.value)
+  const content = c?.content || ''
+  return content ? `${content.slice(0, 120)}${content.length > 120 ? '…' : ''}` : ''
+})
+
+function openCorpusPick() {
+  evalCorpusPickId.value = undefined
+  evalCorpusVisible.value = true
+}
+
+function confirmCorpusPick() {
+  const c = corpusList.value.find(x => x.id === evalCorpusPickId.value)
+  if (c?.content) {
+    evalTextOverride.value = c.content
+    evalTextOverrideFrom.value = 'corpus'
+    evalCorpusVisible.value = false
+    ElMessage.success(`已使用语料「${c.title}」原文（${c.content.length} 字）`)
+  } else {
+    ElMessage.warning('该语料无内容')
+  }
+}
+
+function confirmManualText() {
+  evalTextOverride.value = evalManualText.value.trim()
+  evalTextOverrideFrom.value = 'manual'
+  evalManualVisible.value = false
+}
+
+function clearEvalTextOverride() {
+  evalTextOverride.value = ''
+  evalManualText.value = ''
+}
 
 async function loadEvalHistory() {
   evalHistLoading.value = true
@@ -776,19 +856,26 @@ async function onEvalTaskChange(id: number | undefined) {
   evalData.value = null
   evalResult.value = null
   if (!id) return
+  evalTextOverride.value = ''
+  evalManualText.value = ''
   try {
     const res = await extractionApi.get(id)
     evalData.value = parseResult(res.data)
-    if (!evalData.value) ElMessage.warning('该任务结果解析失败，请换一条')
+    if (!evalData.value) {
+      ElMessage.warning('该任务结果解析失败，请换一条')
+      return
+    }
+    // 语料库抽取的任务不存 inputText，按 corpusId 自动加载原文
+    if (!evalData.value.inputText && (res.data as any)?.corpusId) {
+      try {
+        const c = await corpusApi.get((res.data as any).corpusId)
+        evalData.value.inputText = (c.data as Corpus)?.content || ''
+      } catch {
+        // 加载失败时保留为空，用户可手动选择原文
+      }
+    }
   } catch {
     // request 层已提示
-  }
-}
-
-function onEvalSourceChange() {
-  evalResult.value = null
-  if (evalSource.value === 'history' && !evalHistory.value.length) {
-    loadEvalHistory()
   }
 }
 
@@ -878,14 +965,18 @@ function formatDetailItem(key: string, d: any): string {
 async function handleEvaluate() {
   const target = evalTarget.value
   if (!target || (!target.entities?.length && !target.relations?.length)) {
-    ElMessage.warning(evalSource.value === 'current' ? '请先完成一次抽取' : '请选择一条历史抽取任务')
+    ElMessage.warning('请选择抽取结果')
+    return
+  }
+  if (!evalTextUsed.value.trim()) {
+    ElMessage.warning('缺少评估原文，请选择语料或手动输入原文')
+    openCorpusPick()
     return
   }
   evaluating.value = true
   try {
-    const text = target.inputText || target.text || (evalSource.value === 'current' ? inputText.value : '')
     const res = await extractionApi.evaluate({
-      text,
+      text: evalTextUsed.value,
       entities: target.entities,
       relations: target.relations,
       sampleSize: evalSampleSize.value,
@@ -1264,16 +1355,32 @@ onMounted(() => {
   gap: 16px;
 }
 
-.eval-source-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .eval-task-row {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.eval-text-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--bg-soft, #f7f8fa);
+  border-radius: var(--r-md, 8px);
+}
+
+.eval-corpus-preview {
+  margin-top: 10px;
+  padding: 10px;
+  max-height: 120px;
+  overflow: auto;
+  background: var(--bg-soft, #f7f8fa);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.6;
 }
 
 .eval-meta {

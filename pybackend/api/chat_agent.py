@@ -25,6 +25,7 @@ from core.llm_client import LLMClient
 from core.memory_manager import MemoryManager
 from models.schemas import ChatAgentRequest
 from utils.read.read_config import ReadConfig
+from utils.db.mysql_client import MysqlClient
 
 logger = logging.getLogger(__name__)
 TITLE_MAX_CHARS = 20   # AI 生成标题严格上限（中文字符数）
@@ -366,14 +367,32 @@ def _extract_content(chunk: Any) -> str:
     return ""
 
 
-async def _stream_agent_response(config: Dict[str, Any], model_id: int, message: str, session_id: Optional[str] = None, user_id: Optional[int] = None):
-    model_cfg = config.get("model", {})
+def _resolve_llm(config: Dict[str, Any], llm_model_id: Optional[int]) -> Dict[str, Any]:
+    """解析本次问答使用的 LLM 配置：优先 llm_model 表（按 id），否则回退 config 默认。"""
+    if llm_model_id:
+        try:
+            row = MysqlClient().get_llm_model_by_id(int(llm_model_id))
+            if row and row.get("enabled"):
+                return {
+                    "model_name": row["model_name"],
+                    "api_key": row["api_key"],
+                    "base_url": row["base_url"],
+                    "temperature": float(row.get("temperature") or 0.3),
+                }
+        except Exception:
+            traceback.print_exc()
+    # 回退：config.json 默认配置
+    return config.get("model", {})
+
+
+async def _stream_agent_response(config: Dict[str, Any], model_id: int, message: str, session_id: Optional[str] = None, user_id: Optional[int] = None, llm_model_id: Optional[int] = None):
+    model_cfg = _resolve_llm(config, llm_model_id)
 
     llm = ChatOpenAI(
         model=model_cfg.get("model_name", "deepseek-chat"),
         api_key=model_cfg.get("api_key"),
         base_url=model_cfg.get("base_url"),
-        temperature=0.3,
+        temperature=float(model_cfg.get("temperature", 0.3)),
         streaming=True,
     )
 
@@ -402,14 +421,14 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
         tool_calls_made = False
         tool_executed = False  # 关键：是否已经有至少一个工具执行完成（on_tool_end 已触发）→ 进入正式回答阶段
         running_tools: Dict[str, str] = {}  # run_id → tool_name
-        thinking_sent_len = 0
-        answer_sent_len = 0
+        thinking_streamed_len = 0   # 流式阶段实际已推送的思考字数
+        answer_streamed_len = 0     # 流式阶段实际已推送的回答字数
         think_state: Optional[str] = None
         think_tag_open = "<think>"
         think_tag_close = "</think>"
         LARGE_DELTA_THRESHOLD = 40
-        skipped_large_thinking: Optional[str] = None
-        skipped_large_answer: Optional[str] = None
+        skipped_large_thinking: Optional[str] = None  # 超过阈值被暂存的思考内容（多段累积）
+        skipped_large_answer: Optional[str] = None    # 超过阈值被暂存的回答内容（多段累积）
         # 累积完整 AI 回答文本，用于对话结束后保存到记忆
         full_answer_parts: list = []
 
@@ -456,7 +475,6 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                     cleaned_output = str(raw_output) if raw_output else ""
                 # 关键：有工具真正完成 → 此后的 LLM 输出是正式回答
                 tool_executed = True
-                answer_sent_len = 0
                 yield _sse_event("tool_call", {
                     "tool": tool_name,
                     "output": cleaned_output,
@@ -464,69 +482,61 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                 })
 
             # ── LLM 流式输出：ChatModel token 级 与 Chain 级 ──
+            # 注意：实测（deepseek-chat / v4-flash）模型节点整段回答作为单个事件到达，
+            # 事件 content 是"本次增量"，多事件时各事件内容依次拼接。
             elif (kind == "on_chat_model_stream") or (kind == "on_chain_stream" and name == "model"):
                 raw_chunk = data.get("chunk") if "chunk" in data else data
-                full_content = _extract_content(raw_chunk)
-                if not full_content:
+                delta_text = _extract_content(raw_chunk)
+                if not delta_text:
                     continue
 
-                # ── 解析 <think> 标签 ──
-                if think_state is None and think_tag_open in full_content:
+                # ── <think> 标签状态机 ──
+                if think_state is None and think_tag_open in delta_text:
                     think_state = "inside"
-                if think_state == "inside" and think_tag_close in full_content:
+                if think_state == "inside" and think_tag_close in delta_text:
                     think_state = "closed"
 
                 phase_is_answer = tool_executed  # ✅ 以 tool_executed 而非 tool_calls_made 判定阶段
 
-                # 1) 若出现 <think> 标签
+                think_delta = ""
+                answer_delta = ""
+
                 if think_state is not None:
-                    text = full_content
+                    # 出现过 <think> 标签：本事件内拆分思考部分与回答部分
+                    text = delta_text
                     if think_tag_open in text:
-                        _, after_open = text.split(think_tag_open, 1)
+                        _, text = text.split(think_tag_open, 1)
+                    if think_tag_close in text:
+                        think_part, rest = text.split(think_tag_close, 1)
+                    elif think_state == "closed":
+                        # 闭合标签在更早事件中，本事件全部是回答
+                        think_part, rest = "", text
                     else:
-                        after_open = text
-                    if think_tag_close in after_open:
-                        think_part, rest = after_open.split(think_tag_close, 1)
-                    else:
-                        think_part, rest = after_open, ""
-                    answer_part = rest if think_state == "closed" else ""
-
-                    if len(think_part) > thinking_sent_len:
-                        delta = think_part[thinking_sent_len:]
-                        if len(delta) > LARGE_DELTA_THRESHOLD:
-                            skipped_large_thinking = delta
-                        elif delta:
-                            yield _sse_event("thinking", {"content": delta})
-                        thinking_sent_len = len(think_part)
-
-                    if phase_is_answer and len(answer_part) > answer_sent_len:
-                        delta = answer_part[answer_sent_len:]
-                        if len(delta) > LARGE_DELTA_THRESHOLD:
-                            skipped_large_answer = delta
-                        elif delta:
-                            full_answer_parts.append(delta)
-                            yield _sse_event("answer", {"content": delta})
-                        answer_sent_len = len(answer_part)
-                    continue
-
-                # 2) 普通模式
-                if phase_is_answer:
-                    if len(full_content) > answer_sent_len:
-                        delta = full_content[answer_sent_len:]
-                        if len(delta) > LARGE_DELTA_THRESHOLD:
-                            skipped_large_answer = delta
-                        elif delta:
-                            full_answer_parts.append(delta)
-                            yield _sse_event("answer", {"content": delta})
-                        answer_sent_len = len(full_content)
+                        think_part, rest = text, ""
+                    think_delta = think_part
+                    # </think> 之后的内容即正式回答（无论是否调用过工具）
+                    if think_state == "closed" and rest:
+                        answer_delta = rest
                 else:
-                    if len(full_content) > thinking_sent_len:
-                        delta = full_content[thinking_sent_len:]
-                        if len(delta) > LARGE_DELTA_THRESHOLD:
-                            skipped_large_thinking = delta
-                        elif delta:
-                            yield _sse_event("thinking", {"content": delta})
-                        thinking_sent_len = len(full_content)
+                    # 普通模式：无 think 标签
+                    if phase_is_answer:
+                        answer_delta = delta_text
+                    else:
+                        think_delta = delta_text
+
+                if think_delta:
+                    if len(think_delta) > LARGE_DELTA_THRESHOLD:
+                        skipped_large_thinking = (skipped_large_thinking or "") + think_delta
+                    else:
+                        thinking_streamed_len += len(think_delta)
+                        yield _sse_event("thinking", {"content": think_delta})
+                if answer_delta:
+                    if len(answer_delta) > LARGE_DELTA_THRESHOLD:
+                        skipped_large_answer = (skipped_large_answer or "") + answer_delta
+                    else:
+                        answer_streamed_len += len(answer_delta)
+                        full_answer_parts.append(answer_delta)
+                        yield _sse_event("answer", {"content": answer_delta})
 
             # ── Agent 最终完成（仅 LangGraph 根链） ──
             elif kind == "on_chain_end" and name == "LangGraph":
@@ -538,39 +548,52 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                         full_text = getattr(last_msg, "content", "") or ""
                         has_tool_calls = bool(getattr(last_msg, "tool_calls", None))
 
-                        # 无工具调用的直答场景：流式阶段已将全部内容作为 thinking 推送（前端已展示），
-                        # 此处不重复推送 SSE，仅将完整回答存入记忆，保证历史对话恢复时 AI 回复不丢失
-                        if not tool_executed and not has_tool_calls and full_text and not full_answer_parts:
+                        # 诊断日志：排查"无回答就停止"类问题的关键证据
+                        logger.info(
+                            "agent完成 sid=%s tool_executed=%s has_tool_calls=%s full_len=%d "
+                            "思考已推=%d 思考暂存=%d 回答已推=%d 回答暂存=%d",
+                            session_id, tool_executed, has_tool_calls, len(full_text or ""),
+                            thinking_streamed_len, len(skipped_large_thinking or ""),
+                            answer_streamed_len, len(skipped_large_answer or ""),
+                        )
+
+                        # 1) 补发流式阶段被暂存的大段内容（实测模型常整段回答作为单事件到达）
+                        had_skipped_think = bool(skipped_large_thinking)
+                        had_skipped_answer = bool(skipped_large_answer)
+                        if skipped_large_thinking:
+                            async for ev in _sse_stream_chunks("thinking", skipped_large_thinking, chunk_size=6, sleep_ms=10):
+                                yield ev
+                            skipped_large_thinking = None
+                        if skipped_large_answer:
+                            full_answer_parts.append(skipped_large_answer)
+                            async for ev in _sse_stream_chunks("answer", skipped_large_answer, chunk_size=4, sleep_ms=5):
+                                yield ev
+                            skipped_large_answer = None
+
+                        # 2) 兜底：整个流式阶段一个字都没推出去 → 从最终消息解析补发，
+                        #    确保任何情况下用户都能看到回答（不再出现"只收到 done"）
+                        if (not thinking_streamed_len and not answer_streamed_len
+                                and not had_skipped_think and not had_skipped_answer
+                                and full_text):
+                            if think_tag_open in full_text and think_tag_close in full_text:
+                                _, after = full_text.split(think_tag_open, 1)
+                                inside, after_close = after.split(think_tag_close, 1)
+                                if inside.strip():
+                                    async for ev in _sse_stream_chunks("thinking", inside.strip(), chunk_size=6, sleep_ms=10):
+                                        yield ev
+                                if after_close.strip():
+                                    full_answer_parts.append(after_close.strip())
+                                    async for ev in _sse_stream_chunks("answer", after_close.strip(), chunk_size=4, sleep_ms=5):
+                                        yield ev
+                            else:
+                                # 直答无标签：推到 thinking 通道（前端在无工具调用且无 content 时
+                                # 会把 thinking 迁移到正式回答区展示）
+                                async for ev in _sse_stream_chunks("thinking", full_text, chunk_size=6, sleep_ms=10):
+                                    yield ev
+
+                        # 3) 记忆兜底：确保回答文本进入记忆（历史对话恢复时 AI 回复不丢失）
+                        if not full_answer_parts and full_text and not has_tool_calls:
                             full_answer_parts.append(full_text)
-                        else:
-                            # 有工具调用：优先使用"暂存的大段累积内容"（流式事件但 delta 过大被跳过的）
-                            pending_think: Optional[str] = None
-                            pending_answer: Optional[str] = None
-
-                            if skipped_large_thinking:
-                                pending_think = skipped_large_thinking
-                            if skipped_large_answer:
-                                pending_answer = skipped_large_answer
-
-                            # 没有暂存 → 从最终 last_msg 解析
-                            if pending_think is None and pending_answer is None and not has_tool_calls and full_text:
-                                if think_tag_open in full_text and think_tag_close in full_text:
-                                    _, after = full_text.split(think_tag_open, 1)
-                                    _inside, after_close = after.split(think_tag_close, 1)
-                                    pending_think = _inside.strip() or None
-                                    pending_answer = after_close.strip() or None
-                                else:
-                                    pending_answer = full_text or None
-
-                            # 对暂存 / 解析到的内容进行分段流式推送
-                            if pending_think:
-                                async for ev in _sse_stream_chunks("thinking", pending_think, chunk_size=6, sleep_ms=10):
-                                    yield ev
-                            if pending_answer:
-                                # 确保最终回答文本被累积（用于保存到记忆）
-                                full_answer_parts.append(pending_answer)
-                                async for ev in _sse_stream_chunks("answer", pending_answer, chunk_size=4, sleep_ms=5):
-                                    yield ev
 
     except Exception as e:
         yield _sse_event("error", {"message": str(e)})
@@ -689,6 +712,27 @@ async def delete_chat_session(session_id: str, userId: int):
     return {"message": f"会话 {session_id} 已删除", "affected": affected}
 
 
+@router.get("/api/chat/llm-models")
+async def list_llm_models():
+    """可用的 LLM 模型清单（llm_model 表，enabled=1，按 sort_order 排序）。
+    不返回 api_key。"""
+    try:
+        rows = MysqlClient().get_llm_models(enabled_only=True)
+        return [
+            {
+                "id": r["id"],
+                "provider": r["provider"],
+                "modelName": r["model_name"],
+                "displayName": r["display_name"],
+                "isReasoner": bool(r.get("is_reasoner")),
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"加载模型清单失败: {e}")
+
+
 @router.post("/api/chat/agent/stream")
 async def chat_agent_stream(req: ChatAgentRequest, request: Request):
     """流式对话 Agent 接口（SSE）。
@@ -705,7 +749,7 @@ async def chat_agent_stream(req: ChatAgentRequest, request: Request):
         raise HTTPException(status_code=500, detail="配置未加载")
 
     return StreamingResponse(
-        _stream_agent_response(config, req.modelId, req.message, req.sessionId, req.userId),
+        _stream_agent_response(config, req.modelId, req.message, req.sessionId, req.userId, req.llmModelId),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

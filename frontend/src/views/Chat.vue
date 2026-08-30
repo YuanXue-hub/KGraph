@@ -247,21 +247,58 @@
               @blur="inputFocused = false"
               class="chat-input"
             />
-            <button
-              class="send-btn"
-              :disabled="!canSend || sending"
-              @click="sendMessage()"
-              :title="sending ? '正在发送…' : '发送'"
-            >
-              <svg v-if="!sending" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <svg v-else viewBox="0 0 24 24" width="18" height="18" class="spin-slow">
-                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="40 60" stroke-linecap="round"/>
-              </svg>
-            </button>
+            <div class="input-toolbar">
+              <div class="tools-left">
+                <span class="toolbar-spacer"></span>
+              </div>
+              <div class="tools-right">
+                <!-- LLM 模型选择（Trae Work 风格：纯文本 + 下拉箭头，无框无底色） -->
+                <el-dropdown
+                  trigger="click"
+                  placement="top-end"
+                  @command="onLlmModelChange"
+                  popper-class="llm-model-dropdown"
+                  :disabled="llmLoading || sending || !llmModels.length"
+                >
+                  <span class="llm-model-trigger" :title="llmCurrentName">
+                    {{ llmCurrentName }}
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" class="llm-trigger-caret">
+                      <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </span>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item
+                        v-for="m in llmModels"
+                        :key="m.id"
+                        :command="m.id"
+                        class="llm-dd-item"
+                      >
+                        <span class="llm-dd-name">{{ m.displayName }}</span>
+                        <span v-if="m.id === selectedLlmModelId" class="llm-dd-check">✓</span>
+                      </el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+                <button
+                  class="send-btn"
+                  :disabled="!canSend || sending"
+                  @click="sendMessage()"
+                  :title="sending ? '正在发送…' : '发送'"
+                >
+                  <svg v-if="!sending" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 19V5M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" width="18" height="18" class="spin-slow">
+                    <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="40 60" stroke-linecap="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
-          <p class="disclaimer">内容由 AI 结合图谱数据生成，重要信息建议自行核实</p>
+          <div class="footer-bottom">
+            <p class="disclaimer">内容由 AI 结合图谱数据生成，重要信息建议自行核实</p>
+          </div>
         </div>
       </footer>
     </main>
@@ -339,6 +376,58 @@ const sending = ref(false)
 const inputFocused = ref(false)
 const selectedModelId = ref<number>()
 const modelOptions = ref<{ label: string; value: number }[]>([])
+
+// LLM 模型选择（右下角，Trae Work 风格）：llm_model 表，记住上次选择，默认 deepseek-chat
+interface LlmModel { id: number; provider: string; modelName: string; displayName: string; isReasoner: boolean }
+const llmModels = ref<LlmModel[]>([])
+const llmLoading = ref(true)
+const selectedLlmModelId = ref<number>()
+
+const llmCurrentName = computed(() => {
+  if (llmLoading.value) return '加载中…'
+  const m = llmModels.value.find(x => x.id === selectedLlmModelId.value)
+  return m?.displayName || (llmModels.value.length ? '选择模型' : '默认模型')
+})
+
+function onLlmModelChange(id: number | string) {
+  const v = Number(id)
+  if (!v) return
+  selectedLlmModelId.value = v
+  localStorage.setItem('kg_llm_model_id', String(v))
+}
+
+async function loadLlmModels() {
+  llmLoading.value = true
+  try {
+    const res = await fetch('/api/v1/chat/llm-models', { credentials: 'include' })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const json = await res.json()
+    // 兼容两种返回：裸数组 或 { code, data: [...] } 包装
+    const raw = Array.isArray(json) ? json : (json?.data ?? [])
+    const list: LlmModel[] = (Array.isArray(raw) ? raw : []) as LlmModel[]
+    if (list.length) {
+      llmModels.value = list
+      const saved = Number(localStorage.getItem('kg_llm_model_id') || '')
+      const fallback = list.find(m => m.modelName === 'deepseek-chat')?.id || list[0].id
+      const initial = list.some(m => m.id === saved) ? saved : fallback
+      selectedLlmModelId.value = initial
+      if (!saved || initial !== saved) {
+        localStorage.setItem('kg_llm_model_id', String(initial))
+      }
+    }
+  } catch (e) {
+    // 失败：置空并提示（发送请求仍按后端默认模型走，不阻塞）
+    llmModels.value = []
+    console.warn('[KGraph] LLM 模型清单加载失败:', e)
+  } finally {
+    llmLoading.value = false
+  }
+}
+
+function selectLlmModel(id: number) {
+  selectedLlmModelId.value = id
+  localStorage.setItem('kg_llm_model_id', String(id))
+}
 const messagesRef = ref<HTMLElement>()
 const sessionId = ref<string>()
 
@@ -511,12 +600,22 @@ async function loadModels() {
       } catch { /* skip */ }
     }
     modelOptions.value = opts
+    // 恢复上次选择的图谱模型（页面刷新/切换菜单返回后不丢失），无效则回退第一个
+    if (opts.length && selectedModelId.value === undefined) {
+      const saved = Number(localStorage.getItem('kg_chat_model_id') || '')
+      selectedModelId.value = opts.some(o => o.value === saved) ? saved : opts[0].value
+    }
   } catch (e) {
     console.error('加载模型列表失败', e)
   }
 }
 
-function onModelChange() { /* no-op 模型切换不丢会话 */ }
+function onModelChange() {
+  // 持久化图谱模型选择，刷新/重进页面后自动恢复
+  if (selectedModelId.value !== undefined) {
+    localStorage.setItem('kg_chat_model_id', String(selectedModelId.value))
+  }
+}
 // ========== 会话管理 ==========
 async function createSession(): Promise<string | undefined> {
   try {
@@ -722,7 +821,12 @@ async function sendMessage(text?: string) {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
       },
-      body: JSON.stringify({ message: msg, modelId: selectedModelId.value, sessionId: sessionId.value }),
+      body: JSON.stringify({
+        message: msg,
+        modelId: selectedModelId.value,
+        sessionId: sessionId.value,
+        llmModelId: selectedLlmModelId.value,
+      }),
     })
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -839,6 +943,7 @@ async function sendMessage(text?: string) {
 
 // ========== 生命周期 ==========
 onMounted(() => {
+  loadLlmModels()
   loadModels()
   // 进入页面自动加载当前用户的历史会话（用户间隔离）
   loadHistorySessions()
@@ -1442,11 +1547,10 @@ watch(
 }
 .input-shell {
   display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 10px 10px 10px 18px;
+  flex-direction: column;
+  padding: 16px 18px 10px;
   border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  border-radius: 18px;
   background: #ffffff;
   transition: all .18s ease;
 }
@@ -1462,7 +1566,7 @@ watch(
   background: transparent !important;
   box-shadow: none !important;
   resize: none;
-  padding: 6px 0;
+  padding: 0 0 8px;
   font-size: 14.5px;
   line-height: 1.65;
   color: #111827;
@@ -1473,21 +1577,56 @@ watch(
   color: #9ca3af;
 }
 
-.send-btn {
-  width: 36px; height: 36px;
+/* 底部工具条 */
+.input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+}
+.tools-left { flex: 1; display: flex; align-items: center; gap: 10px; }
+.tools-right { display: flex; align-items: center; gap: 14px; }
+
+/* LLM 模型选择：纯文本 + 下拉箭头（Trae Work 风格） */
+.llm-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: color .15s ease;
+  border-radius: 6px;
+}
+.llm-model-trigger:hover {
+  color: #374151;
+  background: #f3f4f6;
+}
+.llm-trigger-caret {
+  transition: transform .15s ease;
   flex-shrink: 0;
-  border-radius: 10px;
+}
+
+/* 发送按钮：方形紫底（Trae Work 风格） */
+.send-btn {
+  width: 34px; height: 34px;
+  flex-shrink: 0;
+  border-radius: 8px;
   border: none;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #4F6BFF 0%, #6A5CFF 60%, #8B5CF6 100%);
+  background: linear-gradient(135deg, #4F46E5 0%, #6366F1 60%, #7C3AED 100%);
   color: #ffffff;
   transition: all .18s ease;
-  box-shadow: 0 2px 8px -2px rgba(79,107,255,0.55);
+  box-shadow: 0 2px 6px -1px rgba(99,102,241,0.45);
 }
 .send-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 5px 14px -3px rgba(79,107,255,0.65);
+  box-shadow: 0 5px 12px -2px rgba(99,102,241,0.6);
 }
 .send-btn:disabled {
   background: #e5e7eb;
@@ -1497,11 +1636,14 @@ watch(
 }
 .send-btn:active:not(:disabled) { transform: translateY(0); }
 
+.footer-bottom {
+  margin-top: 10px;
+}
 .disclaimer {
   text-align: center;
   color: #c4c9d1;
   font-size: 12px;
-  margin: 10px 0 0;
+  margin: 0;
 }
 
 /* ============ 响应式 ============ */
@@ -1511,5 +1653,36 @@ watch(
   .msg-row { padding-left: 16px; padding-right: 16px; }
   .empty-title { font-size: 22px; }
   .user-bubble { max-width: 82%; }
+}
+
+
+</style>
+
+<!-- LLM 模型下拉弹层（全局，el-dropdown 的 popper 不在 scoped 作用域内） -->
+<style>
+.llm-model-dropdown .el-dropdown-menu__item {
+  font-size: 13px;
+  color: #4b5563;
+  padding: 8px 14px;
+  line-height: 1.5;
+}
+.llm-model-dropdown .llm-dd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.llm-model-dropdown .llm-dd-check {
+  color: #6366F1;
+  font-size: 12px;
+}
+.llm-model-dropdown .el-dropdown-menu__item.is-active {
+  background: #eef2ff;
+  color: #4f6bff;
+  font-weight: 500;
+}
+.llm-model-dropdown .el-dropdown-menu__item:focus,
+.llm-model-dropdown .el-dropdown-menu__item:not(.is-disabled):hover {
+  background: #f3f4f6;
 }
 </style>

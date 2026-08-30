@@ -1,9 +1,12 @@
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 from api.extraction import router as extraction_router
 from api.evaluation import router as evaluation_router

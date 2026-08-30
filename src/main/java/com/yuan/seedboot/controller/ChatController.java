@@ -81,7 +81,30 @@ public class ChatController {
         }
         Object sessionIdObj = body.get("sessionId");
         String sessionId = sessionIdObj != null ? String.valueOf(sessionIdObj) : null;
-        log.info("Chat Agent stream: message={}, modelId={}, sessionId={}, userId={}", message, modelId, sessionId, loginUser.getId());
-        return chatService.chatAgentStream(message, modelId, sessionId, loginUser.getId());
+        Long llmModelId = parseLongField(body.get("llmModelId"));
+        log.info("Chat Agent stream: message={}, modelId={}, sessionId={}, userId={}, llmModelId={}",
+                message, modelId, sessionId, loginUser.getId(), llmModelId);
+        return chatService.chatAgentStream(message, modelId, sessionId, loginUser.getId(), llmModelId);
+    }
+
+    /**
+     * 可用 LLM 模型清单（供前端问答时选择）
+     */
+    @GetMapping("/llm-models")
+    public java.util.List<Map<String, Object>> listLlmModels() {
+        return chatService.listLlmModels();
+    }
+
+    private Long parseLongField(Object obj) {
+        if (obj instanceof Number) {
+            return ((Number) obj).longValue();
+        }
+        if (obj instanceof String s && !s.isBlank()) {
+            try {
+                return Long.parseLong(s);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
     }
 }
