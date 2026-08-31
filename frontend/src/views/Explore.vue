@@ -91,14 +91,8 @@
               style="margin-right: 8px"
               @change="onGraphKindChange"
             >
-              <el-radio-button value="2d">
-                <el-icon style="margin-right: 4px"><Grid /></el-icon>
-                2D
-              </el-radio-button>
-              <el-radio-button value="3d">
-                <el-icon style="margin-right: 4px"><Cpu /></el-icon>
-                3D
-              </el-radio-button>
+              <el-radio-button value="2d">2D</el-radio-button>
+              <el-radio-button value="3d">3D</el-radio-button>
             </el-radio-group>
             <el-button size="small" :icon="Refresh" @click="reloadGraph">重新加载</el-button>
             <el-button size="small" :icon="FullScreen" @click="fitView">适应画布</el-button>
@@ -177,7 +171,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, FullScreen, Coin, Connection, Close, Grid, Cpu } from '@element-plus/icons-vue'
+import { Search, Refresh, FullScreen, Coin, Connection, Close } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { projectApi, modelApi, exploreApi } from '@/api'
 import { G6Adapter } from '@/utils/graph/G6Adapter'

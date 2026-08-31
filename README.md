@@ -29,11 +29,11 @@ KOS 抽取页面：左侧配置区（项目/模型选择、语料来源、11 项
 
 ---
 ### LLM抽取
-LLM抽取页面：抽取配置（实体关系配置、抽取配置）、抽取结果展示。
+LLM抽取页面：双 Tab（知识抽取 / 质量评估）。知识抽取含抽取配置（实体关系配置、抽取配置）与结果展示；质量评估支持选择历史抽取结果与语料进行内在指标 + LLM-as-Judge 评估。
 ![LLM抽取](assets/LLM%E6%8A%BD%E5%8F%96.png)
 ### 智能问答（流式输出）
 
-对话式知识查询页面：极简界面布局，支持 LLM 思维链流式展示、工具调用卡片透明层、正式回答逐字打字机效果。基于 LangGraph Agent + 图谱工具（搜索实体、获取详情、关系查询、图谱统计、按类型查询实体等）+ SSE 全链路流式推送。
+对话式知识查询页面：极简界面布局，支持 LLM 思维链流式展示、工具调用卡片、正式回答逐字打字机效果。基于 LangGraph Agent + 图谱工具（搜索实体、获取详情、关系查询、图谱统计、按类型查询实体等）+ SSE 全链路流式推送。支持会话管理与右下角 LLM 模型选择（DeepSeek 系列，llm_model 表配置）。
 ![智能问答](assets/images/智能问答.png)
 
 
@@ -66,6 +66,12 @@ KGraph 是一个面向知识图谱构建、管理、训练和问答的一体式�
 - **模型训练**：训练任务管理、曲线监控、模型效果评估
 - **数据标注**：标注任务管理，支持 BIO 标签体系
 - **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 8 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`get_entities_by_type`、`get_entities_by_name`、`get_causal_chain`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① 思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
+- **智能问答 · 模型选择与会话管理**：
+  - 右下角模型选择器（Trae Work 风格）：模型清单由 `llm_model` 表维护（DeepSeek 系列，可扩展千问/GLM），`GET /api/chat/llm-models` 动态拉取；上次选择存 localStorage，首次使用默认 deepseek-chat
+  - 图谱模型（顶部下拉）选择持久化 localStorage，刷新/切换菜单后自动恢复
+  - 会话管理：新建/切换/删除会话，历史消息 MySQL 持久化 + Redis 缓存（次日 0 点过期）
+  - 会话标题：首轮问答完成后异步调用 LLM 生成 ≤20 字标题（不截断），先发 `done` 恢复输入框、再补发 `title` 事件实时替换会话项标题；短路优化 + 规则兜底降级
+- **LLM 抽取质量评估**：抽取页"质量评估"Tab，支持从抽取历史选择结果与语料一键评估；内在指标（孤立实体率/平均度/关系密度等）+ LLM-as-Judge 抽样评估（G-Eval 风格，实体边界/关系正确性）
 - **文本切分**（规划中）：MinerU 解析后的长 Markdown 文本将按结构/滑动窗口切分为 chunk 存储，防止 LLM 抽取时上下文窗口超限
 
 ---
@@ -165,7 +171,9 @@ KGraph/
 │   ├── kgraph.sql               # 主业务表
 │   ├── graph.sql                # 图谱相关表
 │   ├── user.sql                 # 用户表
-│   ├── chat_history.sql         # 聊天记录表
+│   ├── chat_history.sql         # 对话历史表
+│   ├── chat_session.sql         # 会话元数据表（AI 生成标题）
+│   ├── llm_model.sql            # LLM 模型配置表（智能问答模型选择）
 │   └── log.sql                  # 日志表
 │
 └── pom.xml                      # Maven 配置
@@ -203,6 +211,7 @@ mysql -u root -p -e "CREATE DATABASE seedboot DEFAULT CHARACTER SET utf8mb4;"
 mysql -u root -p seedboot < sql/kgraph.sql
 mysql -u root -p seedboot < sql/user.sql
 mysql -u root -p seedboot < sql/chat_history.sql
+mysql -u root -p seedboot < sql/llm_model.sql   # 智能问答模型选择（导入后替换 api_key）
 mysql -u root -p seedboot < sql/log.sql
 
 # Neo4j 约束/索引（可选，提升查询性能并保证实体唯一性）
@@ -447,27 +456,36 @@ Python 后端通过 `StreamingResponse` 发出标准 SSE 帧（`Cache-Control: n
 
 | event       | 触发时机                    | data 字段             |
 |-------------|-----------------------------|-----------------------|
-| `thinking`  | Agent 推理阶段（on_chain_stream 累计 delta 切片） | `{content}` |
-| `tool_call` | LangGraph `on_tool_start`   | `{tool, input}`       |
-| `tool_output` | LangGraph `on_tool_end`   | `{tool, output}`      |
-| `answer`    | Agent 最终回答（on_chat_model_stream 累计 delta 切片） | `{content}` |
-| `done`      | LangGraph run 结束          | 任意（前端收到即断开）|
+| `thinking`  | Agent 推理阶段（`on_chain_stream` / `on_chat_model_stream` 增量切片） | `{content}` |
+| `tool_call` | LangGraph `on_tool_start` / `on_tool_end`（status=running/done） | `{tool, input/output, status}` |
+| `answer`    | Agent 正式回答（工具执行完成后或 `</think>` 之后的增量） | `{content}` |
+| `done`      | 本轮回答结束，前端收到立即恢复输入框（不关闭连接） | `{}` |
+| `title`     | 首轮完成后异步生成的会话标题（done 之后补发） | `{title, sessionId}` |
+| `error`     | 流处理异常                  | `{message}`           |
 
-#### 2. 增量推送 + 打字机动效
+#### 2. 流式推送机制（增量语义 + 暂存补发）
 
-- **Python 端**：`chat_agent.py` 维护 `thinking_sent_len` / `answer_sent_len` 已推送游标，对 LangGraph 返回的「累计字符串」切片只发送 delta 增量；`_sse_stream_chunks()` 再将 delta 拆成约 4 字符一个 SSE 帧，模拟逐字节奏。
+- **Python 端**（`chat_agent.py`）：LangGraph 事件内容按**增量**处理——`<think>` 标签状态机拆分思考/回答通道；单段 >40 字符的大块内容先暂存（多段累积），Agent 完成阶段（`on_chain_end`）统一分段补发，并从最终消息兜底解析，**保证任何模型/场景下回答内容都不会丢失**（实测 DeepSeek 各模型整段回答常作为单事件到达）。
 - **Java 端**：`ChatServiceImpl` 使用 `ParameterizedTypeReference<ServerSentEvent<String>>` 声明类型，WebFlux `bodyToFlux` 逐事件透传，`maxInMemorySize` 禁用缓冲。
-- **前端端**：`Chat.vue` 维护 3 条 **缓冲队列 + 定时器**（`flusherThinking`/`flusherTool`/`flusherAnswer`），以 ~30ms 间隔从队列 pop 一个字符追加到 DOM，实现「思考/工具/回答」三路独立打字机。**Markdown 通过 marked 解析为 HTML，支持代码块高亮、链接、列表、表格**。
+- **前端端**：`Chat.vue` 维护 3 条 **缓冲队列 + 定时器**（`flusherThinking`/`flusherTool`/`flusherAnswer`），以 ~30ms 间隔从队列 pop 一个字符追加到 DOM，实现「思考/工具/回答」三路独立打字机。无工具调用的直答内容由 thinking 通道迁移到正式回答区展示。**Markdown 通过 marked 解析为 HTML，支持代码块高亮、链接、列表、表格**。
 
-#### 3. UI 视觉
+#### 3. 模型选择与会话管理
 
-- 整体布局：左侧深色侧边栏（模型选择、会话切换、发送按钮）+ 右侧浅色对话区（气泡 + 卡片）
-- 思考面板：`.thinking-step` 紫色边框 + 浅紫渐变底，展开/收起动画
-- 工具调用：紧凑卡片，icon 左 + 工具名 + 输入 JSON（代码块）+ 执行输出（浅绿底 code block）
-- 正式回答：`.ai-reply` 白底卡片 + 圆角 + `prose` 样式的 Markdown 内容
-- 输入框：毛玻璃底部固定，渐变发送按钮（`bg-gradient-to-br` 蓝紫→蓝），回车发送 / Shift+回车换行
+- **LLM 模型选择器**（输入框右下角，发送按钮左侧）：`GET /api/chat/llm-models` 从 `llm_model` 表读取启用模型（当前为 DeepSeek 系列：deepseek-chat / deepseek-v4-pro / deepseek-v4-flash），问答请求携带 `llmModelId` 动态解析该模型的 API 地址/密钥/温度，未传时回退 `config.json` 默认配置。用户上次选择存 localStorage（`kg_llm_model_id`），首次使用默认 deepseek-chat
+- **图谱模型选择**（顶部下拉）：选定本体模型隔离问答范围，选择持久化 localStorage（`kg_chat_model_id`），刷新后自动恢复
+- **会话管理**：侧边栏新建/切换/删除会话；消息历史 MySQL（`chat_history`）持久化 + Redis 缓存；会话元数据（AI 生成标题）存 `chat_session` 表与 Redis
+- **会话标题生成**：首轮（1 user + 1 ai）完成后异步调用 LLM 产出 ≤20 字标题；标题就绪前会话项显示首条消息，`title` 事件到达后实时替换。短路优化（问题本身适合做标题时不调 LLM）+ 规则兜底（AI 连续生成超长标题时取问题前 15 字）
 
-#### 4. 内置图谱工具集（`pybackend/core/agent_tools.py`）
+#### 4. UI 视觉（DeepSeek 风格）
+
+- 整体布局：左侧浅色系侧边栏（柔和米灰 `#f7f8fa` 底 + 右侧 `1px` 分隔线；新建会话白底按钮、会话项悬停 `#eef0f3`、当前会话柔蓝 `#e8edff` + 深蓝字）+ 右侧浅色对话区
+- 对话窗口无头像：用户消息浅灰气泡（`#f3f4f6` 底、`#1f2937` 深字、12px 圆角、无阴影），AI 消息纯文字布局
+- 思考卡片：折叠面板，处理中显示「已深度思考 中…」，完成后显示「已深度思考 X 秒」
+- 工具调用卡片：图标 + 工具名 + 状态 + 可展开的输入/输出详情
+- 正式回答：Markdown 渲染（表格/列表/加粗/代码块）
+- 输入区：无边框多行文本框（聚焦蓝色光晕），右下角模型选择器 + 方形发送按钮，回车发送 / Shift+回车换行
+
+#### 5. 内置图谱工具集（`pybackend/core/agent_tools.py`）
 
 | 工具 | 功能 | Cypher 示例 |
 |------|------|-------------|

@@ -6,10 +6,14 @@ export interface FG3DAdapterOptions {
   handlers: GraphEventHandlers
 }
 
-const FOCUS_SCALE = 1.25
-const DIM_ALPHA = 0.2
+const FOCUS_SCALE = 1.3
+const DIM_ALPHA = 0.18
 const NORMAL_ALPHA = 1.0
-const SELECTED_EMISSIVE = '#66aaff'
+// 粒子特效配色（深空底 + 发光粒子 + 星场）
+const BG_COLOR = 0x070b16
+const LINK_COLOR = '#3c4a6e'
+const LINK_COLOR_ADJ = '#8fb0ff'
+const LINK_COLOR_SEL = '#4f8bff'
 
 export class FG3DAdapter implements GraphAdapter {
   readonly kind: GraphKind = '3d'
@@ -23,6 +27,8 @@ export class FG3DAdapter implements GraphAdapter {
   private selectedEdgeIdx: number | null = null
   private rafTicking = false
   private labelSprites = new Map<string, THREE.Sprite>()
+  private starfield: THREE.Points | null = null
+  private twinklePhase = new Map<string, number>()
 
   constructor(options: FG3DAdapterOptions) {
     this.options = options
@@ -47,7 +53,7 @@ export class FG3DAdapter implements GraphAdapter {
     const graph = ForceGraphCtor()(this.container)
       .width(width)
       .height(height)
-      .backgroundColor('rgba(247,248,250,1)')
+      .backgroundColor('rgba(7,11,22,1)')
       .showNavInfo(false)
       // 力导向参数（对齐 2D 的力导强度）
       .d3AlphaDecay(0.02)
@@ -57,15 +63,15 @@ export class FG3DAdapter implements GraphAdapter {
       .nodeColor((n: any) => n.color || '#409eff')
       .nodeOpacity(1.0)
       .nodeResolution(16)
-      .linkDirectionalArrowLength(3.5)
+      .linkDirectionalArrowLength(3)
       .linkDirectionalArrowRelPos(1)
-      .linkColor(() => '#b8bfc9')
-      .linkOpacity(0.85)
-      .linkWidth(1.5)
+      .linkColor(() => LINK_COLOR)
+      .linkOpacity(0.35)
+      .linkWidth(1.2)
       // 节点标签使用 canvas sprite
       .nodeThreeObject((n: any) => this._buildNodeSprite(n as GraphNode))
 
-    // 布局间距：减弱斥力让图更紧凑，球体相对图幅更大，避免“细线+小点”的观感
+    // 布局间距：减弱斥力让图更紧凑，粒子相对图幅更大，避免“细线+小点”的观感
     try {
       ;(graph.d3Force('link') as unknown as { distance?: (d: number) => void })?.distance?.(45)
       ;(graph.d3Force('charge') as unknown as { strength?: (d: number) => void })?.strength?.(-35)
@@ -73,14 +79,12 @@ export class FG3DAdapter implements GraphAdapter {
       /* empty */
     }
 
-    // 补一盏定向光，强化球体的明暗立体感
     const scene = graph.scene() as THREE.Scene
     if (scene) {
-      const keyLight = new THREE.DirectionalLight(0xffffff, 1.6)
-      keyLight.position.set(80, 120, 60)
-      scene.add(keyLight)
-      // 景深雾：远处节点淡入背景色，强化 3D 纵深感知（near/far 每帧随相机距离自适应）
-      scene.fog = new THREE.Fog(0xf7f8fa, 400, 1400)
+      // 深空雾：远处粒子淡入背景色，强化 3D 纵深感知（near/far 每帧随相机距离自适应）
+      scene.fog = new THREE.Fog(BG_COLOR, 400, 1400)
+      // 背景星场：深空粒子氛围
+      this._addStarfield(scene)
     }
 
     // 点击事件
@@ -158,44 +162,52 @@ export class FG3DAdapter implements GraphAdapter {
   private _buildNodeSprite(n: GraphNode): THREE.Object3D {
     const group = new THREE.Group()
     const color = new THREE.Color(n.color || '#409eff')
-    // 球体直径取平均边长的 ~1/4（link distance ~45），zoomToFit 后呈饱满的 3D 球
-    const radius = 12 + Math.sqrt(n.__val || 1) * 3.5
-    const mat = new THREE.MeshPhongMaterial({
-      color,
+    // 粒子风：小而亮的核心 + 双层加色光晕，整体呈发光粒子
+    const coreRadius = 2.6 + Math.sqrt(n.__val || 1) * 1.5
+    const coreMat = new THREE.MeshBasicMaterial({
+      // 核心向白色提亮，模拟粒子高光
+      color: color.clone().lerp(new THREE.Color('#ffffff'), 0.45),
       transparent: true,
-      opacity: NORMAL_ALPHA,
-      shininess: 60,
-      specular: new THREE.Color(0xaad4ff),
-      // 自发光用节点色淡化，避免背光面一片死黑
-      emissive: color.clone().multiplyScalar(0.28)
+      opacity: NORMAL_ALPHA
     })
-    const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 28, 28), mat)
-    sphere.userData.nodeId = n.id
-    group.add(sphere)
+    const core = new THREE.Mesh(new THREE.SphereGeometry(coreRadius, 16, 16), coreMat)
+    core.userData.nodeId = n.id
+    group.add(core)
 
-    // 柔光晕（径向渐变 + 加色混合），增强 3D 质感
-    const glow = this._makeGlowSprite(color)
-    glow.scale.setScalar(radius * 2.8)
-    group.add(glow)
+    // 内层光晕（小而亮）
+    const glowIn = this._makeGlowSprite(color, 0.95)
+    const sIn = coreRadius * 3.6
+    glowIn.scale.set(sIn, sIn, 1)
+    glowIn.userData.baseScale = sIn
+    group.add(glowIn)
+
+    // 外层光晕（大而弥散）
+    const glowOut = this._makeGlowSprite(color, 0.5)
+    const sOut = coreRadius * 7
+    glowOut.scale.set(sOut, sOut, 1)
+    glowOut.userData.baseScale = sOut
+    group.add(glowOut)
 
     // 文字标签（Canvas 生成 sprite，2D 贴屏，不旋转）
     const label = n.label || n.id
-    const sprite = this._makeLabelSprite(label, radius)
-    sprite.position.set(0, radius + 1.6, 0)
+    const sprite = this._makeLabelSprite(label, coreRadius)
+    sprite.position.set(0, coreRadius * 5 + 2, 0)
     group.add(sprite)
     this.labelSprites.set(n.id, sprite)
     return group
   }
 
-  private _makeGlowSprite(color: THREE.Color): THREE.Sprite {
+  private _makeGlowSprite(color: THREE.Color, opacity: number): THREE.Sprite {
     if (!FG3DAdapter._glowTexture) {
       const size = 128
       const canvas = document.createElement('canvas')
       canvas.width = canvas.height = size
       const ctx = canvas.getContext('2d')!
+      // 粒子光晕：中心锐利高亮，向外快速衰减
       const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
-      grad.addColorStop(0, 'rgba(255,255,255,0.85)')
-      grad.addColorStop(0.3, 'rgba(255,255,255,0.3)')
+      grad.addColorStop(0, 'rgba(255,255,255,1)')
+      grad.addColorStop(0.25, 'rgba(255,255,255,0.55)')
+      grad.addColorStop(0.55, 'rgba(255,255,255,0.14)')
       grad.addColorStop(1, 'rgba(255,255,255,0)')
       ctx.fillStyle = grad
       ctx.fillRect(0, 0, size, size)
@@ -205,9 +217,11 @@ export class FG3DAdapter implements GraphAdapter {
       map: FG3DAdapter._glowTexture,
       color: color.clone(),
       transparent: true,
-      opacity: 0.4,
+      opacity,
       depthWrite: false,
-      blending: THREE.AdditiveBlending
+      blending: THREE.AdditiveBlending,
+      // 不受雾影响，避免加色光晕被暗色雾"吃掉"
+      fog: false
     })
     const sprite = new THREE.Sprite(mat)
     sprite.renderOrder = -1
@@ -229,8 +243,8 @@ export class FG3DAdapter implements GraphAdapter {
     const h = Math.ceil(fontSize * 1.25) + paddingY * 2
     canvas.width = w
     canvas.height = h
-    // 背景（胶囊，透明度低避免遮挡）
-    ctx.fillStyle = 'rgba(255,255,255,0.92)'
+    // 背景（深色半透明胶囊，适配深空粒子背景）
+    ctx.fillStyle = 'rgba(10,17,32,0.66)'
     const r = h / 2
     ctx.beginPath()
     ctx.moveTo(r, 0)
@@ -245,14 +259,14 @@ export class FG3DAdapter implements GraphAdapter {
     ctx.closePath()
     ctx.fill()
     // 描边
-    ctx.strokeStyle = 'rgba(100,116,139,0.35)'
+    ctx.strokeStyle = 'rgba(120,150,220,0.35)'
     ctx.lineWidth = 2
     ctx.stroke()
     // 文字
     ctx.font = `500 ${fontSize}px "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
     ctx.textBaseline = 'middle'
     ctx.textAlign = 'center'
-    ctx.fillStyle = '#1f2937'
+    ctx.fillStyle = '#dbe6fb'
     ctx.fillText(displayText, w / 2, h / 2 + 1)
 
     const tex = new THREE.CanvasTexture(canvas)
@@ -262,12 +276,42 @@ export class FG3DAdapter implements GraphAdapter {
     // 这里用 depthWrite:false 保证标签不遮挡其他对象
     const mat = new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true })
     const sprite = new THREE.Sprite(mat)
-    // 维持 label 与半径的比例（高度约两倍球半径，保证远距可读）
+    // 世界空间固定高度（link distance ~45），保证远距可读；大节点稍大
     const aspect = w / h
-    const spriteH = radius * 2.2
+    const spriteH = 6 + radius * 0.5
     sprite.scale.set(spriteH * aspect, spriteH, 1)
     sprite.renderOrder = 999
     return sprite
+  }
+
+  /** 背景星场：环绕图幅的随机粒子壳层，营造深空氛围 */
+  private _addStarfield(scene: THREE.Scene) {
+    const count = 600
+    const pos = new Float32Array(count * 3)
+    for (let i = 0; i < count; i++) {
+      // 球壳均匀随机分布
+      const r = 500 + Math.random() * 1200
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1)
+      pos[i * 3] = r * Math.sin(phi) * Math.cos(theta)
+      pos[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
+      pos[i * 3 + 2] = r * Math.cos(phi)
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    const mat = new THREE.PointsMaterial({
+      color: 0x9db4e8,
+      size: 2.2,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      // 星星不参与雾衰减（否则远处星点全被雾吃掉）
+      fog: false
+    })
+    this.starfield = new THREE.Points(geo, mat)
+    scene.add(this.starfield)
   }
 
   setData(nodes: GraphNode[], edges: GraphEdge[]): void {
@@ -278,6 +322,7 @@ export class FG3DAdapter implements GraphAdapter {
     this.selectedNodeId = null
     this.selectedEdgeIdx = null
     this.labelSprites.clear()
+    this.twinklePhase.clear()
     // 赋默认 __val（大小），节点类型=事件的稍微大一点
     const withVal: GraphNode[] = nodes.map((n) => {
       const isEvent = (n.group || n.dataType || '') === '事件'
@@ -315,7 +360,7 @@ export class FG3DAdapter implements GraphAdapter {
                 )
               }
             })
-            r += 20 // 节点半径 + 标签外扩
+            r += 30 // 节点光晕 + 标签外扩
             const fov = (cam.fov * Math.PI) / 180
             const dist = Math.max((r / Math.tan(fov / 2)) * 1.12, 120)
             this.instance.cameraPosition(
@@ -343,6 +388,8 @@ export class FG3DAdapter implements GraphAdapter {
       if (!this.instance) return
       this._updateFog()
       this._applySelectionAndFocus()
+      // 星场缓慢旋转，深空氛围微动效
+      if (this.starfield) this.starfield.rotation.y += 0.00035
       requestAnimationFrame(tick)
     }
     if (!this.rafTicking) {
@@ -361,8 +408,8 @@ export class FG3DAdapter implements GraphAdapter {
       const target = (this.instance.controls() as any)?.target as THREE.Vector3 | undefined
       if (!cam || !target) return
       const dist = cam.position.distanceTo(target)
-      fog.near = dist * 0.9
-      fog.far = dist * 3.2
+      fog.near = dist * 1.1
+      fog.far = dist * 4.0
     } catch {
       /* empty */
     }
@@ -390,34 +437,54 @@ export class FG3DAdapter implements GraphAdapter {
       })
     }
     const hasSelected = !!this.selectedNodeId || this.selectedEdgeIdx !== null
+    const tNow = performance.now() / 1000
 
     nodes.forEach((n) => {
       const obj = n.__threeObj as THREE.Object3D | undefined
       if (!obj) return
-      const sphere = obj.children[0] as THREE.Mesh | undefined
-      if (!sphere) return
-      const mat = sphere.material as THREE.MeshPhongMaterial
+      const core = obj.children[0] as THREE.Mesh | undefined
+      if (!core) return
+      const coreMat = core.material as THREE.MeshBasicMaterial
+      const glowIn = obj.children[1] as THREE.Sprite | undefined
+      const glowOut = obj.children[2] as THREE.Sprite | undefined
       const dimmed = hasSelected && !adjacentNodeIds.has(n.id)
-      if (n.id === this.selectedNodeId) {
-        mat.opacity = NORMAL_ALPHA
-        mat.emissive = new THREE.Color(SELECTED_EMISSIVE)
-        mat.emissiveIntensity = 0.45
-        sphere.scale.setScalar(FOCUS_SCALE)
+      const selected = n.id === this.selectedNodeId
+
+      // 微呼吸：光晕轻微律动，营造粒子场流动感
+      if (!this.twinklePhase.has(n.id)) this.twinklePhase.set(n.id, Math.random() * Math.PI * 2)
+      const phase = this.twinklePhase.get(n.id)!
+      const twinkle = 1 + 0.07 * Math.sin(tNow * 2.4 + phase)
+
+      if (selected) {
+        coreMat.opacity = NORMAL_ALPHA
+        core.scale.setScalar(FOCUS_SCALE)
       } else {
-        mat.emissive = new THREE.Color(0x000000)
-        mat.emissiveIntensity = 0.0
-        sphere.scale.setScalar(1.0)
-        mat.opacity = dimmed ? DIM_ALPHA : NORMAL_ALPHA
+        coreMat.opacity = dimmed ? DIM_ALPHA : NORMAL_ALPHA
+        core.scale.setScalar(1.0)
       }
-      // 光晕透明度同步（children[1] 为 glow sprite）
-      const glow = obj.children[1] as THREE.Sprite | undefined
-      if (glow) {
-        ;(glow.material as THREE.SpriteMaterial).opacity = n.id === this.selectedNodeId ? 0.85 : dimmed ? 0.06 : 0.4
+
+      // 双层光晕：选中放大增亮，非关联压暗
+      if (glowIn) {
+        const gm = glowIn.material as THREE.SpriteMaterial
+        const base = (glowIn.userData.baseScale as number) || glowIn.scale.x
+        const k = selected ? 1.25 : 1
+        const f = selected ? 1.0 : dimmed ? 0.08 : 0.9
+        gm.opacity = f * twinkle
+        glowIn.scale.set(base * k * twinkle, base * k * twinkle, 1)
       }
+      if (glowOut) {
+        const gm = glowOut.material as THREE.SpriteMaterial
+        const base = (glowOut.userData.baseScale as number) || glowOut.scale.x
+        const k = selected ? 1.3 : 1
+        const f = selected ? 0.85 : dimmed ? 0.05 : 0.5
+        gm.opacity = f * twinkle
+        glowOut.scale.set(base * k * twinkle, base * k * twinkle, 1)
+      }
+
       // 标签透明度同步
       const labelSprite = this.labelSprites.get(n.id)
       if (labelSprite) {
-        ;(labelSprite.material as THREE.SpriteMaterial).opacity = dimmed ? 0.1 : 1.0
+        ;(labelSprite.material as THREE.SpriteMaterial).opacity = dimmed ? 0.08 : 1.0
       }
     })
 
@@ -428,13 +495,13 @@ export class FG3DAdapter implements GraphAdapter {
       const arrowObj = l.__arrowObj as THREE.Mesh | undefined
       const arrowMat = arrowObj ? (arrowObj.material as THREE.MeshBasicMaterial) : null
       if (this.selectedEdgeIdx === i) {
-        mat.color = new THREE.Color('#409eff')
+        mat.color = new THREE.Color(LINK_COLOR_SEL)
         mat.opacity = 1.0
-        if (arrowMat) arrowMat.color = new THREE.Color('#409eff')
+        if (arrowMat) arrowMat.color = new THREE.Color(LINK_COLOR_SEL)
       } else {
         const isAdj = this.selectedNodeId !== null && adjacentLinkIdx.has(i)
-        mat.color = new THREE.Color(isAdj ? '#8ab4f8' : '#b8bfc9')
-        mat.opacity = hasSelected ? (isAdj ? 1.0 : 0.12) : 0.85
+        mat.color = new THREE.Color(isAdj ? LINK_COLOR_ADJ : LINK_COLOR)
+        mat.opacity = hasSelected ? (isAdj ? 0.9 : 0.08) : 0.35
         if (arrowMat) arrowMat.opacity = mat.opacity
       }
     })
@@ -449,7 +516,7 @@ export class FG3DAdapter implements GraphAdapter {
       const graphData = (this.instance.graphData() || { nodes: [] }) as { nodes: any[] }
       const node = graphData.nodes.find((n) => n.id === nodeId)
       if (node && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.z === 'number') {
-        const dist = 60
+        const dist = 90
         this.instance.cameraPosition(
           { x: node.x + dist * 0.6, y: node.y + dist * 0.4, z: node.z + dist * 0.8 },
           { x: node.x, y: node.y, z: node.z },
@@ -505,5 +572,7 @@ export class FG3DAdapter implements GraphAdapter {
     this.selectedNodeId = null
     this.selectedEdgeIdx = null
     this.labelSprites.clear()
+    this.starfield = null
+    this.twinklePhase.clear()
   }
 }

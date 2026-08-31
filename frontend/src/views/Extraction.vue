@@ -278,7 +278,7 @@
                 <div v-else class="eval-meta">
                   <el-tag type="primary" effect="plain">实体 {{ evalTarget.entities?.length || 0 }}</el-tag>
                   <el-tag type="success" effect="plain">关系 {{ evalTarget.relations?.length || 0 }}</el-tag>
-                  <span class="eval-meta-text">评估对象：抽取任务 #{{ evalTaskId }}；内在指标全量计算，LLM 裁判按抽样判定</span>
+                  <span class="eval-meta-text">评估对象：抽取任务 #{{ evalTaskId }}；内在指标全量计算，LLM 裁判{{ evalSampleSize === 0 ? '全量判定' : '按抽样判定' }}</span>
                 </div>
 
                 <div v-if="evalTarget" class="eval-text-row">
@@ -299,6 +299,7 @@
                   <span class="eval-label">LLM 裁判抽样数量</span>
                   <el-select v-model="evalSampleSize" style="width: 110px">
                     <el-option v-for="n in [10, 20, 30, 50]" :key="n" :value="n" :label="`${n} 条`" />
+                    <el-option :value="0" label="全部" />
                   </el-select>
                   <el-button type="primary" :loading="evaluating" :disabled="!evalTarget" @click="handleEvaluate">开始评估</el-button>
                 </div>
@@ -337,89 +338,225 @@
             </template>
           </el-dialog>
 
-          <!-- 评估报告 -->
-          <template v-if="evalResult">
-            <div class="eval-panel">
-              <div class="eval-panel-header">
-                <span class="eval-panel-title"><span class="eval-bar"></span>评估报告</span>
-                <div class="eval-header-extra">
-                  <el-tag v-if="evalResult?.duration" type="info" effect="plain">耗时 {{ evalResult?.duration }}ms</el-tag>
-                  <el-tag v-if="evalResult?.tokenConsumed" type="info" effect="plain">Token {{ evalResult?.tokenConsumed }}</el-tag>
+          <!-- 评估报告（内在指标 + LLM 裁判） -->
+          <div v-if="evalResult" class="eval-panel">
+            <div class="eval-panel-header">
+              <span class="eval-panel-title"><span class="eval-bar"></span>评估报告</span>
+              <div class="eval-header-extra">
+                <el-tag v-if="evalResult?.evaluationId" type="warning" effect="plain">历史 #{{ evalResult?.evaluationId }}</el-tag>
+                <el-tag v-if="evalResult?.duration" type="info" effect="plain">耗时 {{ evalResult?.duration }}ms</el-tag>
+                <el-tag v-if="evalResult?.tokenConsumed" type="info" effect="plain">Token {{ evalResult?.tokenConsumed }}</el-tag>
+                <span class="eval-sample-text">关系抽样 {{ evalResult?.sampledRelations }} 条 / 实体抽样 {{ evalResult?.sampledEntities }} 条</span>
+              </div>
+            </div>
+            <div class="eval-panel-body">
+              <div class="eval-overview">
+                <div class="eval-overall-score">
+                  <div class="eval-score-num" :class="scoreClass(evalResult?.overall)">{{ formatScore(evalResult?.overall) }}</div>
+                  <div class="eval-score-label">综合得分（LLM 裁判均值）</div>
+                </div>
+                <div class="eval-intrinsic-grid">
+                  <div class="eval-stat" v-for="s in intrinsicStats" :key="s.label">
+                    <div class="eval-stat-value">{{ s.value }}</div>
+                    <div class="eval-stat-label">{{ s.label }}</div>
+                  </div>
                 </div>
               </div>
-              <div class="eval-panel-body">
-                <div class="eval-overview">
-                  <div class="eval-overall-score">
-                    <div class="eval-score-num" :class="scoreClass(evalResult?.overall)">{{ formatScore(evalResult?.overall) }}</div>
-                    <div class="eval-score-label">综合得分（LLM 裁判均值）</div>
-                  </div>
-                  <div class="eval-intrinsic-grid">
-                    <div class="eval-stat" v-for="s in intrinsicStats" :key="s.label">
-                      <div class="eval-stat-value">{{ s.value }}</div>
-                      <div class="eval-stat-label">{{ s.label }}</div>
+              <div v-if="isolatedList.length" class="eval-isolated">
+                <span class="eval-isolated-label">孤立实体（{{ isolatedList.length }}）：</span>
+                <el-tag
+                  v-for="n in isolatedList.slice(0, 20)"
+                  :key="n"
+                  size="small"
+                  type="warning"
+                  effect="plain"
+                  style="margin: 2px 4px 2px 0;"
+                >{{ n }}</el-tag>
+                <span v-if="isolatedList.length > 20" class="eval-isolated-more">等共 {{ isolatedList.length }} 个</span>
+              </div>
+
+              <h4 class="eval-section-title">LLM 裁判指标（G-Eval）</h4>
+              <el-table :data="judgeRows" border>
+                <el-table-column type="expand">
+                  <template #default="{ row }">
+                    <div class="eval-detail-list">
+                      <div v-if="!row.details.length" class="eval-detail-empty">无明细数据</div>
+                      <div v-for="(d, i) in row.details" :key="i" class="eval-detail-item">
+                        <el-tag :type="d.pass ? 'success' : 'danger'" size="small" effect="dark">{{ d.pass ? '通过' : '未通过' }}</el-tag>
+                        <span class="eval-detail-item-text">{{ formatDetailItem(row.key, d) }}</span>
+                        <span v-if="d.reason" class="eval-detail-reason">{{ d.reason }}</span>
+                      </div>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="name" label="评估指标" min-width="150" />
+                <el-table-column label="得分" width="200">
+                  <template #default="{ row }">
+                    <el-progress
+                      v-if="row.score !== null && row.score !== undefined"
+                      :percentage="Math.round(row.score * 100)"
+                      :color="progressColor(row.score)"
+                      :stroke-width="14"
+                      :text-inside="true"
+                    />
+                    <span v-else class="eval-score-none">—</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="reason" label="整体结论" min-width="320">
+                  <template #default="{ row }">
+                    <span class="eval-reason-text">{{ row.reason || '-' }}</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </div>
+
+          <!-- 评估历史记录 -->
+          <div class="eval-panel">
+            <div class="eval-panel-header">
+              <span class="eval-panel-title"><span class="eval-bar"></span>评估历史记录</span>
+              <div class="eval-header-extra">
+                <el-button size="small" :icon="Refresh" @click="loadEvalRecords">刷新</el-button>
+              </div>
+            </div>
+            <div class="eval-panel-body">
+              <el-table :data="evalRecords" border v-loading="evalRecordsLoading" size="small">
+                <el-table-column type="index" min-width="50" align="center" />
+                <el-table-column prop="id" label="评估ID" min-width="150" align="center" />
+                <el-table-column prop="taskId" label="抽取任务ID" min-width="150" align="center" />
+                <el-table-column prop="sampleSize" label="抽样数量" min-width="90" align="center">
+                  <template #default="{ row }">{{ row.sampleSize === 0 ? '全部' : `${row.sampleSize} 条` }}</template>
+                </el-table-column>
+                <el-table-column prop="overall" label="综合得分" min-width="90" align="center">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.overall != null" :type="row.overall >= 0.8 ? 'success' : row.overall >= 0.6 ? 'warning' : 'danger'" size="small">
+                      {{ (row.overall * 100).toFixed(1) }}
+                    </el-tag>
+                    <span v-else>—</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="tokenConsumed" label="Token" min-width="90" align="center">
+                  <template #default="{ row }">{{ row.tokenConsumed ?? '—' }}</template>
+                </el-table-column>
+                <el-table-column prop="duration" label="耗时(ms)" min-width="90" align="center">
+                  <template #default="{ row }">{{ row.duration ?? '—' }}</template>
+                </el-table-column>
+                <el-table-column prop="createTime" label="评估时间" min-width="150">
+                  <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
+                </el-table-column>
+                <el-table-column label="操作" min-width="180" align="center">
+                  <template #default="{ row }">
+                    <el-button size="small" @click="onLoadEvalRecord(row.id)">查看</el-button>
+                    <el-button size="small" @click="openCompareDialog(row)">对比</el-button>
+                    <el-button size="small" type="danger" @click="deleteEvalRecord(row.id)">删除</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div class="ext-pagination" v-if="evalRecordsTotal > evalRecordsSize">
+                <el-pagination v-model:current-page="evalRecordsPage" :page-size="evalRecordsSize" :total="evalRecordsTotal" layout="total, prev, pager, next" @current-change="loadEvalRecords" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 对比记录选择对话框 -->
+          <el-dialog v-model="compareVisible" title="选择要对比的评估记录" width="680px" append-to-body>
+            <div class="compare-dialog-tip">请勾选 2~3 条评估记录（A 为基准，其余为对比对象）</div>
+            <el-table
+              ref="compareTableRef"
+              :data="evalRecords"
+              border
+              size="small"
+              max-height="360"
+              @selection-change="onCompareSelectionChange"
+            >
+              <el-table-column type="selection" width="45" :selectable="isSelectable" />
+              <el-table-column prop="id" label="评估ID" min-width="150" align="center" />
+              <el-table-column prop="taskId" label="抽取任务ID" min-width="150" align="center" />
+              <el-table-column prop="sampleSize" label="抽样数量" min-width="85" align="center">
+                <template #default="{ row }">{{ row.sampleSize === 0 ? '全部' : `${row.sampleSize} 条` }}</template>
+              </el-table-column>
+              <el-table-column prop="overall" label="综合得分" min-width="85" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.overall != null">{{ (row.overall * 100).toFixed(1) }}</span>
+                  <span v-else>—</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="createTime" label="评估时间" min-width="150">
+                <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
+              </el-table-column>
+            </el-table>
+            <template #footer>
+              <el-button @click="compareVisible = false">取消</el-button>
+              <el-button type="primary" :disabled="compareSelection.length < 2 || compareSelection.length > 3" :loading="comparing" @click="confirmCompare">确定对比</el-button>
+            </template>
+          </el-dialog>
+
+          <!-- 评估对比结果大弹窗（最多三份完整报告 · 优势高亮） -->
+          <el-dialog v-model="compareResultVisible" title="评估对比" width="1400px" top="3vh" append-to-body class="compare-result-dialog">
+            <div class="cmp-toolbar">
+              <el-switch v-model="highlightAdvantage" active-text="高亮优势项" />
+            </div>
+            <div class="cmp-reports" :class="`is-${compareRecords.length}`" v-loading="comparing">
+              <div
+                v-for="(rec, si) in compareRecords"
+                :key="rec.id"
+                class="cmp-report"
+                :class="{ 'is-winner': highlightAdvantage && overallWinnerIdx === si }"
+              >
+                <div class="cmp-report-head">
+                  <el-tag :type="si === 0 ? 'warning' : 'primary'" effect="plain">{{ si === 0 ? 'A · 基准' : `${String.fromCharCode(65 + si)} · 对比` }}</el-tag>
+                  <span class="cmp-report-id">评估 #{{ compareRecords[si]?.id }}</span>
+                  <span class="cmp-report-meta">
+                    {{ compareRecords[si]?.sampleSize === 0 ? '全部' : (compareRecords[si]?.sampleSize + ' 条') }} · {{ formatTime(compareRecords[si]?.createTime) }}
+                  </span>
+                </div>
+                <div class="cmp-report-body">
+                  <div class="eval-overview">
+                    <div class="eval-overall-score">
+                      <div class="eval-score-num" :class="scoreClass(compareResults?.[si]?.overall)">{{ formatScore(compareResults?.[si]?.overall) }}</div>
+                      <div class="eval-score-label">综合得分（LLM 裁判均值）</div>
+                    </div>
+                    <div class="eval-intrinsic-grid">
+                      <div
+                        class="eval-stat"
+                        v-for="s in cmpIntrinsicStats(si)"
+                        :key="s.label"
+                        :class="{ 'is-adv': highlightAdvantage && s.winner === si }"
+                      >
+                        <div class="eval-stat-value">{{ s.value }}</div>
+                        <div class="eval-stat-label">{{ s.label }}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div v-if="isolatedList.length" class="eval-isolated">
-                  <span class="eval-isolated-label">孤立实体（{{ isolatedList.length }}）：</span>
-                  <el-tag
-                    v-for="n in isolatedList.slice(0, 20)"
-                    :key="n"
-                    size="small"
-                    type="warning"
-                    effect="plain"
-                    style="margin: 2px 4px 2px 0;"
-                  >{{ n }}</el-tag>
-                  <span v-if="isolatedList.length > 20" class="eval-isolated-more">等共 {{ isolatedList.length }} 个</span>
-                </div>
-              </div>
-            </div>
 
-            <!-- LLM 裁判明细 -->
-            <div class="eval-panel">
-              <div class="eval-panel-header">
-                <span class="eval-panel-title"><span class="eval-bar"></span>LLM 裁判指标（G-Eval）</span>
-                <div class="eval-header-extra">
-                  <span class="eval-sample-text">关系抽样 {{ evalResult?.sampledRelations }} 条 / 实体抽样 {{ evalResult?.sampledEntities }} 条</span>
+                  <h4 class="eval-section-title">LLM 裁判指标（G-Eval）</h4>
+                  <el-table :data="cmpJudgeRows(si)" border size="small">
+                    <el-table-column prop="name" label="评估指标" min-width="120" />
+                    <el-table-column label="得分" width="180">
+                      <template #default="{ row }">
+                        <el-progress
+                          v-if="row.score !== null && row.score !== undefined"
+                          :percentage="Math.round(row.score * 100)"
+                          :color="progressColor(row.score)"
+                          :stroke-width="14"
+                          :text-inside="true"
+                        />
+                        <span v-else class="eval-score-none">—</span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="" width="70" align="center">
+                      <template #default="{ row }">
+                        <el-tag
+                          v-if="highlightAdvantage && row.winner === si"
+                          type="success" size="small" effect="dark" round
+                        >优</el-tag>
+                      </template>
+                    </el-table-column>
+                  </el-table>
                 </div>
               </div>
-              <div class="eval-panel-body">
-                <el-table :data="judgeRows" border>
-                  <el-table-column type="expand">
-                    <template #default="{ row }">
-                      <div class="eval-detail-list">
-                        <div v-if="!row.details.length" class="eval-detail-empty">无明细数据</div>
-                        <div v-for="(d, i) in row.details" :key="i" class="eval-detail-item">
-                          <el-tag :type="d.pass ? 'success' : 'danger'" size="small" effect="dark">{{ d.pass ? '通过' : '未通过' }}</el-tag>
-                          <span class="eval-detail-item-text">{{ formatDetailItem(row.key, d) }}</span>
-                          <span v-if="d.reason" class="eval-detail-reason">{{ d.reason }}</span>
-                        </div>
-                      </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="name" label="评估指标" min-width="150" />
-                  <el-table-column label="得分" width="200">
-                    <template #default="{ row }">
-                      <el-progress
-                        v-if="row.score !== null && row.score !== undefined"
-                        :percentage="Math.round(row.score * 100)"
-                        :color="progressColor(row.score)"
-                        :stroke-width="14"
-                        :text-inside="true"
-                      />
-                      <span v-else class="eval-score-none">—</span>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="reason" label="整体结论" min-width="320">
-                    <template #default="{ row }">
-                      <span class="eval-reason-text">{{ row.reason || '-' }}</span>
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </div>
             </div>
-          </template>
-          <el-empty v-else-if="evalTarget" description="点击「开始评估」生成质量报告" />
+          </el-dialog>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -427,8 +564,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { projectApi, modelApi, corpusApi, extractionApi, entityTypeApi, relationTypeApi } from '@/api'
 import { exportExtractionTask } from '@/utils/export'
@@ -855,9 +992,13 @@ async function loadEvalHistory() {
 async function onEvalTaskChange(id: number | undefined) {
   evalData.value = null
   evalResult.value = null
+  evalRecords.value = []
+  evalRecordsTotal.value = 0
+  evalRecordsPage.value = 1
   if (!id) return
   evalTextOverride.value = ''
   evalManualText.value = ''
+  loadEvalRecords()
   try {
     const res = await extractionApi.get(id)
     evalData.value = parseResult(res.data)
@@ -895,8 +1036,206 @@ interface EvalResult {
   sampledEntities: number
   tokenConsumed?: number
   duration?: number
+  evaluationId?: number
+  evalCreateTime?: number | null
 }
 const evalResult = ref<EvalResult | null>(null)
+
+// ==================== 评估历史（持久化，切换任务/刷新页面后可回看） ====================
+interface EvalRecord {
+  id: number
+  taskId: number
+  sampleSize: number
+  overall: number | null
+  tokenConsumed: number | null
+  duration: number | null
+  createTime: string
+}
+const evalRecords = ref<EvalRecord[]>([])
+const evalRecordsLoading = ref(false)
+const evalRecordsPage = ref(1)
+const evalRecordsSize = 10
+const evalRecordsTotal = ref(0)
+
+async function loadEvalRecords() {
+  evalRecordsLoading.value = true
+  try {
+    const res = await extractionApi.evaluationList(undefined, {
+      pageNum: evalRecordsPage.value,
+      pageSize: evalRecordsSize,
+      sortField: 'createTime',
+      sortOrder: 'descend',
+    })
+    evalRecords.value = res.data?.records || []
+    evalRecordsTotal.value = Number(res.data?.total || 0)
+  } catch {
+    // request 层已提示
+  } finally {
+    evalRecordsLoading.value = false
+  }
+}
+
+async function onLoadEvalRecord(id: number) {
+  try {
+    const res = await extractionApi.evaluationGet(id)
+    evalResult.value = res.data
+  } catch {
+    // request 层已提示
+  }
+}
+
+// ==================== 评估对比（对话框选择 2~3 条历史记录 · 多路报告对照） ====================
+const MAX_COMPARE = 3
+const compareVisible = ref(false)
+const compareResultVisible = ref(false)
+const compareSelection = ref<EvalRecord[]>([])
+const compareRecords = ref<EvalRecord[]>([])
+const compareResults = ref<EvalResult[] | null>(null)
+const comparing = ref(false)
+const compareTableRef = ref()
+const highlightAdvantage = ref(true)
+
+function isSelectable(_row: EvalRecord): boolean {
+  // 已选满 3 条时其余行不可再勾选（已勾选的仍可取消）
+  return true
+}
+
+function onCompareSelectionChange(rows: EvalRecord[]) {
+  // 超过 3 条时保留前 3 条（element-plus 多选无硬上限，这里手动截断）
+  if (rows.length > MAX_COMPARE) {
+    const kept = rows.slice(0, MAX_COMPARE)
+    compareSelection.value = kept
+    nextTick(() => {
+      if (compareTableRef.value) {
+        compareTableRef.value.clearSelection()
+        kept.forEach(r => compareTableRef.value.toggleRowSelection(r, true))
+      }
+    })
+    ElMessage.warning(`最多支持 ${MAX_COMPARE} 条记录同时对比`)
+    return
+  }
+  compareSelection.value = rows
+}
+
+function openCompareDialog(row: EvalRecord) {
+  compareVisible.value = true
+  // 打开对话框后默认勾选当前行（作为基准 A）
+  nextTick(() => {
+    if (compareTableRef.value && row) {
+      compareTableRef.value.clearSelection()
+      compareTableRef.value.toggleRowSelection(row, true)
+    }
+  })
+}
+
+async function confirmCompare() {
+  const sel = compareSelection.value
+  if (sel.length < 2) {
+    ElMessage.warning('请至少勾选两条评估记录')
+    return
+  }
+  comparing.value = true
+  try {
+    const rs = await Promise.all(sel.map(r => extractionApi.evaluationGet(r.id)))
+    compareRecords.value = [...sel]
+    compareResults.value = rs.map(r => r.data)
+    compareVisible.value = false
+    compareResultVisible.value = true
+  } catch {
+    // request 层已提示
+  } finally {
+    comparing.value = false
+  }
+}
+
+function clearCompare() {
+  compareRecords.value = []
+  compareResults.value = null
+  compareResultVisible.value = false
+}
+
+// 优势判定：返回最优记录的下标（higherBetter=false 时低者优；全空或并列返回 null）
+function cmpWinnerIdx(
+  values: Array<number | null | undefined>, higherBetter: boolean,
+): number | null {
+  const valid = values.map((v, i) => [v, i] as const).filter((p): p is [number, number] => p[0] != null)
+  if (valid.length === 0) return null
+  let best = valid[0]
+  let tie = false
+  for (let k = 1; k < valid.length; k++) {
+    const [v] = valid[k]
+    const better = higherBetter ? v! > best[0]! : v! < best[0]!
+    if (better) {
+      best = valid[k]
+      tie = false
+    } else if (v === best[0]) {
+      tie = true
+    }
+  }
+  return tie ? null : best[1]
+}
+
+const overallWinnerIdx = computed<number | null>(() => {
+  const rs = compareResults.value
+  if (!rs || rs.length === 0) return null
+  return cmpWinnerIdx(rs.map(r => r.overall), true)
+})
+
+// 内在指标定义（key 取自 intrinsic 字段，反向指标标注）
+const CMP_INTRINSIC_DEFS: Array<{ key: string; label: string; higherBetter: boolean }> = [
+  { key: 'entityCount', label: '实体总数', higherBetter: true },
+  { key: 'relationCount', label: '关系总数', higherBetter: true },
+  { key: 'avgDegree', label: '平均度', higherBetter: true },
+  { key: 'isolatedRate', label: '孤立实体率', higherBetter: false },
+  { key: 'evidenceCoverage', label: '证据覆盖率', higherBetter: true },
+  { key: 'lowConfidenceRate', label: '低置信率(<0.6)', higherBetter: false },
+]
+
+function cmpIntrinsicStats(si: number): Array<{ label: string; value: string; winner: number | null }> {
+  const rs = compareResults.value
+  if (!rs || !rs[si]) return []
+  const ins = rs[si].intrinsic
+  if (!ins) return []
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? '-' : `${(v * 100).toFixed(1)}%`)
+  return CMP_INTRINSIC_DEFS.map(d => {
+    const values = rs.map(r => (r.intrinsic as any)?.[d.key] ?? null)
+    const v = values[si]
+    const value = d.key === 'entityCount' || d.key === 'relationCount' || d.key === 'avgDegree'
+      ? (v == null ? '-' : String(v))
+      : pct(v)
+    return { label: d.label, value, winner: cmpWinnerIdx(values, d.higherBetter) }
+  })
+}
+
+function cmpJudgeRows(si: number): Array<{ key: string; name: string; score: number | null; winner: number | null }> {
+  const rs = compareResults.value
+  if (!rs || !rs[si]) return []
+  const own = rs[si].llmJudge
+  if (!own) return []
+  return Object.entries(own).map(([key, v]) => {
+    const values = rs.map(r => (r.llmJudge as any)?.[key]?.score ?? null)
+    return { key, name: JUDGE_METRIC_NAMES[key] || key, score: v?.score ?? null, winner: cmpWinnerIdx(values, true) }
+  })
+}
+
+async function deleteEvalRecord(id: number) {
+  try {
+    await ElMessageBox.confirm('确定删除该条评估历史吗？删除后不可恢复。', '删除确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await extractionApi.evaluationDelete(id)
+    ElMessage.success('删除成功')
+    // 若删除的正是当前展示的报告，清空报告
+    if (evalResult.value?.evaluationId === id) evalResult.value = null
+    // 若删除的记录在对比结果里，清空对比
+    if (compareRecords.value.some(r => r.id === id)) clearCompare()
+    loadEvalRecords()
+  } catch {
+    // request 层已提示
+  }
+}
 
 const JUDGE_METRIC_NAMES: Record<string, string> = {
   tripleFaithfulness: '三元组忠实度',
@@ -980,8 +1319,11 @@ async function handleEvaluate() {
       entities: target.entities,
       relations: target.relations,
       sampleSize: evalSampleSize.value,
+      taskId: evalTaskId.value,
     })
     evalResult.value = res.data
+    evalRecordsPage.value = 1
+    loadEvalRecords()
     ElMessage.success('评估完成')
   } catch {
     // request 层已提示
@@ -994,6 +1336,7 @@ onMounted(() => {
   loadProjects()
   loadHistory()
   loadEvalHistory()
+  loadEvalRecords()
 })
 </script>
 
@@ -1347,6 +1690,98 @@ onMounted(() => {
 .eval-sample-text {
   font-size: 12px;
   color: var(--text-3, #86909c);
+}
+
+.eval-section-title {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1, #1f2329);
+}
+
+.compare-dialog-tip {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-3, #86909c);
+}
+
+/* ===== 对比结果大弹窗（左右两份完整报告） ===== */
+.cmp-toolbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.cmp-reports {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.cmp-reports.is-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.cmp-reports.is-3 .eval-intrinsic-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.cmp-reports.is-3 .eval-section-title {
+  margin-top: 12px;
+}
+
+.cmp-report {
+  border: 1px solid var(--el-border-color, #e4e7ed);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.cmp-report.is-winner {
+  border-color: var(--el-color-success, #67c23a);
+  box-shadow: 0 0 0 1px var(--el-color-success, #67c23a) inset;
+}
+
+.cmp-report-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fafbfc;
+  border-bottom: 1px solid var(--el-border-color-light, #ebeef5);
+}
+
+.cmp-report-id {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1, #1f2329);
+}
+
+.cmp-report-meta {
+  font-size: 12px;
+  color: var(--text-3, #86909c);
+}
+
+.cmp-report-body {
+  padding: 14px;
+}
+
+.cmp-report-body .eval-overview {
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cmp-report-body .eval-stat.is-adv {
+  border-color: var(--el-color-success, #67c23a);
+  background: #f6fcf4;
+}
+
+.cmp-report-body .eval-stat.is-adv .eval-stat-value {
+  color: var(--el-color-success, #67c23a);
+  font-weight: 700;
 }
 
 .eval-config {

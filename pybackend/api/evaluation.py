@@ -5,7 +5,7 @@
 
   1. 内在指标（0 次 LLM，全量计算）：
      孤立实体率 / 平均度 / 证据覆盖率 / 低置信率 等图结构统计
-  2. LLM-as-Judge（每指标 1 次 LLM 调用，抽样判定）：
+  2. LLM-as-Judge（每指标 1 次 LLM 调用，抽样或全量判定，sampleSize<=0 为全量）：
      - 三元组忠实度  tripleFaithfulness    关系是否被原文明确支持
      - 谓词合理性    predicateReasonableness 谓词是否恰当、方向是否正确
      - 双时态正确性  bitemporalCorrectness   status/vt 标注是否符合原文语义
@@ -30,7 +30,6 @@ from core.llm_client import LLMClient
 
 router = APIRouter()
 
-MAX_SAMPLE = 50
 DEFAULT_SAMPLE = 30
 
 
@@ -38,7 +37,7 @@ class EvaluationRequest(BaseModel):
     text: str = ""
     entities: List[Dict[str, Any]] = Field(default_factory=list)
     relations: List[Dict[str, Any]] = Field(default_factory=list)
-    sampleSize: int = DEFAULT_SAMPLE
+    sampleSize: int = DEFAULT_SAMPLE  # 正数 = 抽样条数；0 = 全量判定
 
 
 # ============================================================================
@@ -139,7 +138,8 @@ _CRITERIA_ENTITY = (
 
 
 def _sample(items: List[Any], n: int) -> List[Any]:
-    if len(items) <= n:
+    # n <= 0 表示全量评估（前端「全部」选项）
+    if n <= 0 or len(items) <= n:
         return list(items)
     return random.sample(items, n)
 
@@ -241,7 +241,8 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
 
     t0 = time.time()
     total_tokens = 0
-    sample_n = max(1, min(req.sampleSize or DEFAULT_SAMPLE, MAX_SAMPLE))
+    # sampleSize：正数 = 抽样条数；0 或负数 = 全量评估
+    sample_n = req.sampleSize if req.sampleSize is not None else DEFAULT_SAMPLE
 
     # ---- 层次1：内在指标（全量，0 次 LLM）----
     intrinsic = _compute_intrinsic(text, req.entities, req.relations)

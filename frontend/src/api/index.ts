@@ -369,8 +369,17 @@ export const extractionApi = {
   }) {
     return request({ url: '/extraction/llm', method: 'post', data, timeout: 300000 })
   },
-  evaluate(data: { text: string; entities: any[]; relations: any[]; sampleSize?: number }) {
+  evaluate(data: { text: string; entities: any[]; relations: any[]; sampleSize?: number; taskId?: number }) {
     return request({ url: '/extraction/evaluate', method: 'post', data, timeout: 600000 })
+  },
+  evaluationList(taskId: number | undefined, params: { pageNum: number; pageSize: number; sortField?: string; sortOrder?: string }) {
+    return request({ url: '/extraction/evaluate/list', method: 'get', params: { taskId, ...params } })
+  },
+  evaluationGet(id: number) {
+    return request({ url: '/extraction/evaluate/get', method: 'get', params: { id } })
+  },
+  evaluationDelete(id: number) {
+    return request({ url: '/extraction/evaluate/delete', method: 'post', data: { id } })
   },
   kos(data: {
     projectId?: number | string
