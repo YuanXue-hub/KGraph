@@ -50,4 +50,8 @@ public class ExtractionTask {
 
     @TableField("updateTime")
     private Date updateTime;
+
+    @TableLogic
+    @TableField("isDeleted")
+    private Integer isDeleted;
 }

@@ -188,4 +188,15 @@ public class ExtractionController {
         ExtractionTask task = extractionTaskService.getExtractionTask(id);
         return ResultUtils.success(task);
     }
+
+    @PostMapping("/delete")
+    @Operation(summary = "删除抽取任务记录（逻辑删除）")
+    public BaseResponse<Boolean> deleteExtractionTask(@RequestBody Map<String, Object> request) {
+        ThrowUtils.throwIf(request == null || request.get("id") == null, ErrorCode.PARAMS_ERROR, "id 非法");
+        long id = Long.parseLong(String.valueOf(request.get("id")));
+        ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR, "id 非法");
+        boolean removed = extractionTaskService.removeById(id);
+        ThrowUtils.throwIf(!removed, ErrorCode.NOT_FOUND_ERROR, "抽取任务不存在");
+        return ResultUtils.success(true);
+    }
 }

@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS extraction_task (
     createBy                BIGINT COMMENT '创建人ID',
     createTime              DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updateTime              DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    isDeleted               TINYINT(1) DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
     INDEX idx_projectId (projectId),
     INDEX idx_modelId (modelId),
     INDEX idx_corpusId (corpusId),

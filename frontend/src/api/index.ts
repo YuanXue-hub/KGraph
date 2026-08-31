@@ -455,6 +455,9 @@ export const extractionApi = {
   },
   get(id: number) {
     return request({ url: '/extraction/get', method: 'get', params: { id } })
+  },
+  delete(id: number) {
+    return request({ url: '/extraction/delete', method: 'post', data: { id } })
   }
 }
 

@@ -251,10 +251,11 @@
           <el-table-column prop="createTime" label="抽取时间" min-width="150">
             <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
           </el-table-column>
-          <el-table-column label="操作" min-width="130" align="center">
+          <el-table-column label="操作" min-width="180" align="center">
             <template #default="{ row }">
               <el-button size="small" @click="viewHistory(row)">查看</el-button>
               <el-button size="small" @click="exportExtractionTask(row)">导出</el-button>
+              <el-button size="small" type="danger" @click="deleteHistory(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -268,7 +269,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { projectApi, modelApi, corpusApi, extractionApi, trainTaskApi } from '@/api'
 import { exportExtractionTask } from '@/utils/export'
@@ -562,7 +563,7 @@ async function loadHistory() {
       sortOrder: 'descend',
     })
     history.value = res.data?.records || res.data || []
-    histTotal.value = res.data?.total || history.value.length
+    histTotal.value = Number(res.data?.total) || history.value.length
   } finally {
     historyLoading.value = false
   }
@@ -571,6 +572,29 @@ async function loadHistory() {
 async function viewHistory(row: any) {
   const res = await extractionApi.get(row.id)
   result.value = parseResult(res.data)
+  currentHistoryId.value = row.id
+}
+
+const currentHistoryId = ref<number | null>(null)
+
+async function deleteHistory(row: any) {
+  try {
+    await ElMessageBox.confirm('确定删除该条抽取记录吗？删除后不可恢复。', '删除确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await extractionApi.delete(row.id)
+    ElMessage.success('删除成功')
+    // 若删除的正是当前展示的结果，清空结果
+    if (currentHistoryId.value === row.id) {
+      result.value = null
+      currentHistoryId.value = null
+    }
+    loadHistory()
+  } catch {
+    // request 层已提示
+  }
 }
 
 function statusType(status: number): string {
