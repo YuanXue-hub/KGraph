@@ -6,14 +6,13 @@ export interface FG3DAdapterOptions {
   handlers: GraphEventHandlers
 }
 
-const FOCUS_SCALE = 1.3
 const DIM_ALPHA = 0.18
 const NORMAL_ALPHA = 1.0
-// 粒子特效配色（深空底 + 发光粒子 + 星场）
-const BG_COLOR = 0x070b16
-const LINK_COLOR = '#3c4a6e'
-const LINK_COLOR_ADJ = '#8fb0ff'
-const LINK_COLOR_SEL = '#4f8bff'
+// 浅色主题配色（对齐首页风格：浅灰蓝底 + 品牌蓝 + 柔和粒子）
+const BG_COLOR = 0xf7f9fc
+const LINK_COLOR = '#c3cbd9'
+const LINK_COLOR_ADJ = '#165dff'
+const LINK_COLOR_SEL = '#0e42d2'
 
 export class FG3DAdapter implements GraphAdapter {
   readonly kind: GraphKind = '3d'
@@ -27,6 +26,7 @@ export class FG3DAdapter implements GraphAdapter {
   private selectedEdgeIdx: number | null = null
   private rafTicking = false
   private labelSprites = new Map<string, THREE.Sprite>()
+  private linkMats = new Map<any, THREE.LineBasicMaterial>()
   private starfield: THREE.Points | null = null
   private twinklePhase = new Map<string, number>()
 
@@ -53,7 +53,7 @@ export class FG3DAdapter implements GraphAdapter {
     const graph = ForceGraphCtor()(this.container)
       .width(width)
       .height(height)
-      .backgroundColor('rgba(7,11,22,1)')
+      .backgroundColor('rgba(247,249,252,1)')
       .showNavInfo(false)
       // 力导向参数（对齐 2D 的力导强度）
       .d3AlphaDecay(0.02)
@@ -66,8 +66,10 @@ export class FG3DAdapter implements GraphAdapter {
       .linkDirectionalArrowLength(3)
       .linkDirectionalArrowRelPos(1)
       .linkColor(() => LINK_COLOR)
-      .linkOpacity(0.35)
-      .linkWidth(1.2)
+      .linkOpacity(0.45)
+      // 注意：linkWidth>0 会将边渲染为细圆柱 Mesh（精确几何拾取，屏幕上仅约 2px，极难点中）。
+      // 这里保持默认细线渲染，并放宽射线拾取容差（世界坐标单位），让边容易点中
+      .linkHoverPrecision(8)
       // 节点标签使用 canvas sprite
       .nodeThreeObject((n: any) => this._buildNodeSprite(n as GraphNode))
 
@@ -81,9 +83,11 @@ export class FG3DAdapter implements GraphAdapter {
 
     const scene = graph.scene() as THREE.Scene
     if (scene) {
-      // 深空雾：远处粒子淡入背景色，强化 3D 纵深感知（near/far 每帧随相机距离自适应）
+      // 浅色雾：远处元素淡入背景色，强化 3D 纵深感知（near/far 每帧随相机距离自适应）
       scene.fog = new THREE.Fog(BG_COLOR, 400, 1400)
-      // 背景星场：深空粒子氛围
+      // 光照说明：3d-force-graph 场景自带默认灯光（AmbientLight + DirectionalLight），
+      // 配合节点 Phong 材质即可产生立体明暗与高光，无需额外加灯（避免双重曝光）
+      // 背景微尘粒子：浅色主题氛围点缀
       this._addStarfield(scene)
     }
 
@@ -100,13 +104,16 @@ export class FG3DAdapter implements GraphAdapter {
 
     graph.onLinkClick((link: any, event: MouseEvent) => {
       event.stopPropagation()
-      // 找到 edge index
-      const idx = this.currentEdges.findIndex(
-        (e) =>
-          e.source === link.source.id &&
-          e.target === link.target.id &&
-          (e.label || '') === (link.label || '')
-      )
+      // 优先按 id 匹配（setData 时已写入 id），比 source/target/label 组合更可靠
+      let idx = this.currentEdges.findIndex((e) => e.id === link.id)
+      if (idx < 0) {
+        idx = this.currentEdges.findIndex(
+          (e) =>
+            e.source === link.source.id &&
+            e.target === link.target.id &&
+            (e.label || '') === (link.label || '')
+        )
+      }
       if (idx >= 0) {
         this.selectEdge(this.currentEdges[idx].id)
         this.options.handlers.onEdgeClick?.(this.currentEdges[idx])
@@ -162,27 +169,28 @@ export class FG3DAdapter implements GraphAdapter {
   private _buildNodeSprite(n: GraphNode): THREE.Object3D {
     const group = new THREE.Group()
     const color = new THREE.Color(n.color || '#409eff')
-    // 粒子风：小而亮的核心 + 双层加色光晕，整体呈发光粒子
+    // 浅色主题：Phong 材质受光照影响，呈现立体球体（明暗面 + 高光点）
     const coreRadius = 2.6 + Math.sqrt(n.__val || 1) * 1.5
-    const coreMat = new THREE.MeshBasicMaterial({
-      // 核心向白色提亮，模拟粒子高光
-      color: color.clone().lerp(new THREE.Color('#ffffff'), 0.45),
+    const coreMat = new THREE.MeshPhongMaterial({
+      color: color.clone().lerp(new THREE.Color('#ffffff'), 0.08),
+      shininess: 55,
+      specular: new THREE.Color('#9aa7bd'),
       transparent: true,
       opacity: NORMAL_ALPHA
     })
-    const core = new THREE.Mesh(new THREE.SphereGeometry(coreRadius, 16, 16), coreMat)
+    const core = new THREE.Mesh(new THREE.SphereGeometry(coreRadius, 24, 24), coreMat)
     core.userData.nodeId = n.id
     group.add(core)
 
     // 内层光晕（小而亮）
-    const glowIn = this._makeGlowSprite(color, 0.95)
+    const glowIn = this._makeGlowSprite(color, 0.55)
     const sIn = coreRadius * 3.6
     glowIn.scale.set(sIn, sIn, 1)
     glowIn.userData.baseScale = sIn
     group.add(glowIn)
 
     // 外层光晕（大而弥散）
-    const glowOut = this._makeGlowSprite(color, 0.5)
+    const glowOut = this._makeGlowSprite(color, 0.28)
     const sOut = coreRadius * 7
     glowOut.scale.set(sOut, sOut, 1)
     glowOut.userData.baseScale = sOut
@@ -215,12 +223,11 @@ export class FG3DAdapter implements GraphAdapter {
     }
     const mat = new THREE.SpriteMaterial({
       map: FG3DAdapter._glowTexture,
-      color: color.clone(),
+      // 浅色底：光晕向白色淡化，普通混合呈现"柔和色环"而非深底加色辉光
+      color: color.clone().lerp(new THREE.Color('#ffffff'), 0.35),
       transparent: true,
       opacity,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      // 不受雾影响，避免加色光晕被暗色雾"吃掉"
       fog: false
     })
     const sprite = new THREE.Sprite(mat)
@@ -243,8 +250,8 @@ export class FG3DAdapter implements GraphAdapter {
     const h = Math.ceil(fontSize * 1.25) + paddingY * 2
     canvas.width = w
     canvas.height = h
-    // 背景（深色半透明胶囊，适配深空粒子背景）
-    ctx.fillStyle = 'rgba(10,17,32,0.66)'
+    // 背景（白色半透明胶囊，适配浅色主题）
+    ctx.fillStyle = 'rgba(255,255,255,0.92)'
     const r = h / 2
     ctx.beginPath()
     ctx.moveTo(r, 0)
@@ -259,14 +266,14 @@ export class FG3DAdapter implements GraphAdapter {
     ctx.closePath()
     ctx.fill()
     // 描边
-    ctx.strokeStyle = 'rgba(120,150,220,0.35)'
+    ctx.strokeStyle = 'rgba(201,205,212,0.9)'
     ctx.lineWidth = 2
     ctx.stroke()
     // 文字
     ctx.font = `500 ${fontSize}px "PingFang SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
     ctx.textBaseline = 'middle'
     ctx.textAlign = 'center'
-    ctx.fillStyle = '#dbe6fb'
+    ctx.fillStyle = '#1d2129'
     ctx.fillText(displayText, w / 2, h / 2 + 1)
 
     const tex = new THREE.CanvasTexture(canvas)
@@ -284,9 +291,9 @@ export class FG3DAdapter implements GraphAdapter {
     return sprite
   }
 
-  /** 背景星场：环绕图幅的随机粒子壳层，营造深空氛围 */
+  /** 背景微尘粒子：浅色主题下的柔和漂浮点缀，营造空间纵深 */
   private _addStarfield(scene: THREE.Scene) {
-    const count = 600
+    const count = 400
     const pos = new Float32Array(count * 3)
     for (let i = 0; i < count; i++) {
       // 球壳均匀随机分布
@@ -300,14 +307,12 @@ export class FG3DAdapter implements GraphAdapter {
     const geo = new THREE.BufferGeometry()
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
     const mat = new THREE.PointsMaterial({
-      color: 0x9db4e8,
-      size: 2.2,
+      color: 0xaeb8c8,
+      size: 2.0,
       sizeAttenuation: true,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.4,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      // 星星不参与雾衰减（否则远处星点全被雾吃掉）
       fog: false
     })
     this.starfield = new THREE.Points(geo, mat)
@@ -322,6 +327,8 @@ export class FG3DAdapter implements GraphAdapter {
     this.selectedNodeId = null
     this.selectedEdgeIdx = null
     this.labelSprites.clear()
+    this.linkMats.forEach((m) => m.dispose())
+    this.linkMats.clear()
     this.twinklePhase.clear()
     // 赋默认 __val（大小），节点类型=事件的稍微大一点
     const withVal: GraphNode[] = nodes.map((n) => {
@@ -444,7 +451,7 @@ export class FG3DAdapter implements GraphAdapter {
       if (!obj) return
       const core = obj.children[0] as THREE.Mesh | undefined
       if (!core) return
-      const coreMat = core.material as THREE.MeshBasicMaterial
+      const coreMat = core.material as THREE.MeshPhongMaterial
       const glowIn = obj.children[1] as THREE.Sprite | undefined
       const glowOut = obj.children[2] as THREE.Sprite | undefined
       const dimmed = hasSelected && !adjacentNodeIds.has(n.id)
@@ -456,19 +463,20 @@ export class FG3DAdapter implements GraphAdapter {
       const twinkle = 1 + 0.07 * Math.sin(tNow * 2.4 + phase)
 
       if (selected) {
+        // 选中不放大，仅保持高亮（光晕增亮），避免视觉跳动
         coreMat.opacity = NORMAL_ALPHA
-        core.scale.setScalar(FOCUS_SCALE)
+        core.scale.setScalar(1.0)
       } else {
         coreMat.opacity = dimmed ? DIM_ALPHA : NORMAL_ALPHA
         core.scale.setScalar(1.0)
       }
 
-      // 双层光晕：选中放大增亮，非关联压暗
+      // 双层光晕：选中放大增亮，非关联压暗（浅色底用较低基准透明度）
       if (glowIn) {
         const gm = glowIn.material as THREE.SpriteMaterial
         const base = (glowIn.userData.baseScale as number) || glowIn.scale.x
         const k = selected ? 1.25 : 1
-        const f = selected ? 1.0 : dimmed ? 0.08 : 0.9
+        const f = selected ? 0.8 : dimmed ? 0.06 : 0.5
         gm.opacity = f * twinkle
         glowIn.scale.set(base * k * twinkle, base * k * twinkle, 1)
       }
@@ -476,7 +484,7 @@ export class FG3DAdapter implements GraphAdapter {
         const gm = glowOut.material as THREE.SpriteMaterial
         const base = (glowOut.userData.baseScale as number) || glowOut.scale.x
         const k = selected ? 1.3 : 1
-        const f = selected ? 0.85 : dimmed ? 0.05 : 0.5
+        const f = selected ? 0.6 : dimmed ? 0.04 : 0.25
         gm.opacity = f * twinkle
         glowOut.scale.set(base * k * twinkle, base * k * twinkle, 1)
       }
@@ -491,9 +499,16 @@ export class FG3DAdapter implements GraphAdapter {
     links.forEach((l, i) => {
       const lineObj = l.__lineObj as THREE.Line | undefined
       if (!lineObj) return
-      const mat = lineObj.material as THREE.LineBasicMaterial
+      // three-forcegraph 按颜色共享材质实例，直接改共享材质会让所有边互相覆盖。
+      // 这里为每条边分配独立材质，才能逐边高亮/压暗
+      let mat = this.linkMats.get(l)
+      if (!mat) {
+        mat = new THREE.LineBasicMaterial({ color: LINK_COLOR, transparent: true, opacity: 0.45 })
+        this.linkMats.set(l, mat)
+      }
+      if (lineObj.material !== mat) lineObj.material = mat
       const arrowObj = l.__arrowObj as THREE.Mesh | undefined
-      const arrowMat = arrowObj ? (arrowObj.material as THREE.MeshBasicMaterial) : null
+      const arrowMat = arrowObj ? (arrowObj.material as THREE.MeshLambertMaterial) : null
       if (this.selectedEdgeIdx === i) {
         mat.color = new THREE.Color(LINK_COLOR_SEL)
         mat.opacity = 1.0
@@ -501,7 +516,7 @@ export class FG3DAdapter implements GraphAdapter {
       } else {
         const isAdj = this.selectedNodeId !== null && adjacentLinkIdx.has(i)
         mat.color = new THREE.Color(isAdj ? LINK_COLOR_ADJ : LINK_COLOR)
-        mat.opacity = hasSelected ? (isAdj ? 0.9 : 0.08) : 0.35
+        mat.opacity = hasSelected ? (isAdj ? 0.9 : 0.08) : 0.45
         if (arrowMat) arrowMat.opacity = mat.opacity
       }
     })
@@ -510,22 +525,7 @@ export class FG3DAdapter implements GraphAdapter {
   selectNode(nodeId: string): void {
     this.selectedNodeId = nodeId
     this.selectedEdgeIdx = null
-    if (!this.instance) return
-    // 相机平滑飞向目标节点
-    try {
-      const graphData = (this.instance.graphData() || { nodes: [] }) as { nodes: any[] }
-      const node = graphData.nodes.find((n) => n.id === nodeId)
-      if (node && typeof node.x === 'number' && typeof node.y === 'number' && typeof node.z === 'number') {
-        const dist = 90
-        this.instance.cameraPosition(
-          { x: node.x + dist * 0.6, y: node.y + dist * 0.4, z: node.z + dist * 0.8 },
-          { x: node.x, y: node.y, z: node.z },
-          500
-        )
-      }
-    } catch {
-      /* empty */
-    }
+    // 点击仅高亮选中（不移动相机），视角保持用户当前操控状态，可随时继续点击其他元素
   }
 
   selectEdge(edgeId: string): void {
@@ -572,6 +572,8 @@ export class FG3DAdapter implements GraphAdapter {
     this.selectedNodeId = null
     this.selectedEdgeIdx = null
     this.labelSprites.clear()
+    this.linkMats.forEach((m) => m.dispose())
+    this.linkMats.clear()
     this.starfield = null
     this.twinklePhase.clear()
   }

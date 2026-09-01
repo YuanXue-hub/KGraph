@@ -9,6 +9,7 @@ class ExtractionRequest(BaseModel):
     modelId: int
     mode: str = "zero_shot"
     docId: Optional[str] = None    # 可选：语料库原文 docId，用于证据追溯
+    llmModelId: Optional[int] = None  # 抽取 LLM 模型（llm_model 表 id），空则用服务默认
 
 
 class ExtractionResult(BaseModel):

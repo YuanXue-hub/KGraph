@@ -43,5 +43,10 @@ public class ExtractionRequest implements Serializable {
      */
     private List<String> customRelationTypes;
 
+    /**
+     * 抽取 LLM 模型 id（可选，llm_model 表 id，空则用 Python 服务默认配置）
+     */
+    private Long llmModelId;
+
     private static final long serialVersionUID = 1L;
 }

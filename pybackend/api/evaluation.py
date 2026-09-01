@@ -20,13 +20,14 @@ from __future__ import annotations
 import json
 import random
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from api.extraction import _extract_json
 from core.llm_client import LLMClient
+from utils.db.mysql_client import MysqlClient
 
 router = APIRouter()
 
@@ -38,6 +39,8 @@ class EvaluationRequest(BaseModel):
     entities: List[Dict[str, Any]] = Field(default_factory=list)
     relations: List[Dict[str, Any]] = Field(default_factory=list)
     sampleSize: int = DEFAULT_SAMPLE  # 正数 = 抽样条数；0 = 全量判定
+    llmModelId: Optional[int] = None  # 裁判模型（llm_model 表 id），不传用服务默认配置
+    metrics: Optional[List[str]] = None  # 选中的裁判指标 key，空/None = 全部指标
 
 
 # ============================================================================
@@ -233,6 +236,24 @@ def _evidence_text(text: str, r: Dict[str, Any]) -> str:
 @router.post("/api/evaluate")
 def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
     llm_client: LLMClient = request.app.state.llm_client
+    # 裁判模型可指定（llm_model 表 id）：动态构造，无效则回退服务默认配置
+    if req.llmModelId:
+        try:
+            row = MysqlClient().get_llm_model_by_id(int(req.llmModelId))
+            if row and row.get("enabled"):
+                llm_client = LLMClient({
+                    "model": {
+                        "model_name": row["model_name"],
+                        "api_key": row["api_key"],
+                        "base_url": row["base_url"],
+                        "timeout_sec": 300.0,
+                        "max_retries": 1,
+                    }
+                })
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
     text = (req.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="待评估原文为空")
@@ -243,6 +264,13 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
     total_tokens = 0
     # sampleSize：正数 = 抽样条数；0 或负数 = 全量评估
     sample_n = req.sampleSize if req.sampleSize is not None else DEFAULT_SAMPLE
+
+    # 指标选择：metrics 为空/None 时评估全部裁判指标（非法 key 忽略）
+    _ALL_METRICS = {
+        "tripleFaithfulness", "predicateReasonableness",
+        "bitemporalCorrectness", "evidenceValidity", "entityCorrectness",
+    }
+    selected = {m for m in (req.metrics or []) if m in _ALL_METRICS} or _ALL_METRICS
 
     # ---- 层次1：内在指标（全量，0 次 LLM）----
     intrinsic = _compute_intrinsic(text, req.entities, req.relations)
@@ -263,44 +291,48 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
             }
             for i, r in enumerate(rel_sample)
         ]
-        m = _judge_safe(llm_client, "三元组忠实度", _CRITERIA_FAITH, text, base_items)
-        judge["tripleFaithfulness"] = m
-        total_tokens += m["tokens"]
+        if "tripleFaithfulness" in selected:
+            m = _judge_safe(llm_client, "三元组忠实度", _CRITERIA_FAITH, text, base_items)
+            judge["tripleFaithfulness"] = m
+            total_tokens += m["tokens"]
 
-        m = _judge_safe(llm_client, "谓词合理性", _CRITERIA_PREDICATE, text, base_items)
-        judge["predicateReasonableness"] = m
-        total_tokens += m["tokens"]
+        if "predicateReasonableness" in selected:
+            m = _judge_safe(llm_client, "谓词合理性", _CRITERIA_PREDICATE, text, base_items)
+            judge["predicateReasonableness"] = m
+            total_tokens += m["tokens"]
 
         # 双时态标注（附加 status / vt 字段）
-        bi_items = []
-        for i, r in enumerate(rel_sample):
-            bi_items.append({
-                **base_items[i],
-                "status": r.get("status"),
-                "vt_from": r.get("vt_from"),
-                "vt_to": r.get("vt_to"),
-            })
-        m = _judge_safe(llm_client, "双时态标注正确性", _CRITERIA_BITEMPORAL, text, bi_items)
-        judge["bitemporalCorrectness"] = m
-        total_tokens += m["tokens"]
+        if "bitemporalCorrectness" in selected:
+            bi_items = []
+            for i, r in enumerate(rel_sample):
+                bi_items.append({
+                    **base_items[i],
+                    "status": r.get("status"),
+                    "vt_from": r.get("vt_from"),
+                    "vt_to": r.get("vt_to"),
+                })
+            m = _judge_safe(llm_client, "双时态标注正确性", _CRITERIA_BITEMPORAL, text, bi_items)
+            judge["bitemporalCorrectness"] = m
+            total_tokens += m["tokens"]
 
         # 证据句有效性（仅有证据片段的关系）
-        ev_items = []
-        for r in rel_sample:
-            ev = _evidence_text(text, r)
-            if ev:
-                ev_items.append({
-                    "id": len(ev_items) + 1,
-                    "head": str(r.get("head") or ""),
-                    "predicate": str(r.get("relation") or ""),
-                    "tail": str(r.get("tail") or ""),
-                    "evidence": ev,
-                })
-        m = _judge_safe(llm_client, "证据句有效性", _CRITERIA_EVIDENCE, text, ev_items)
-        judge["evidenceValidity"] = m
-        total_tokens += m["tokens"]
+        if "evidenceValidity" in selected:
+            ev_items = []
+            for r in rel_sample:
+                ev = _evidence_text(text, r)
+                if ev:
+                    ev_items.append({
+                        "id": len(ev_items) + 1,
+                        "head": str(r.get("head") or ""),
+                        "predicate": str(r.get("relation") or ""),
+                        "tail": str(r.get("tail") or ""),
+                        "evidence": ev,
+                    })
+            m = _judge_safe(llm_client, "证据句有效性", _CRITERIA_EVIDENCE, text, ev_items)
+            judge["evidenceValidity"] = m
+            total_tokens += m["tokens"]
     elif req.entities:
-        # 有实体但无关系：关系级指标按缺失计 0 分，避免综合得分虚高
+        # 有实体但无关系：选中的关系级指标按缺失计 0 分，避免综合得分虚高
         _missing = {
             "tripleFaithfulness": "三元组忠实度",
             "predicateReasonableness": "谓词合理性",
@@ -308,14 +340,15 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
             "evidenceValidity": "证据句有效性",
         }
         for key, label in _missing.items():
-            judge[key] = {
-                "score": 0.0,
-                "reason": f"抽取结果无任何关系，{label}按缺失计 0 分（实体孤立率 100%，图谱无结构）",
-                "details": [],
-                "tokens": 0,
-            }
+            if key in selected:
+                judge[key] = {
+                    "score": 0.0,
+                    "reason": f"抽取结果无任何关系，{label}按缺失计 0 分（实体孤立率 100%，图谱无结构）",
+                    "details": [],
+                    "tokens": 0,
+                }
 
-    if ent_sample:
+    if ent_sample and "entityCorrectness" in selected:
         ent_items = [
             {"id": i + 1, "name": str(e.get("name") or ""), "type": str(e.get("type") or "")}
             for i, e in enumerate(ent_sample)
@@ -324,7 +357,7 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
         judge["entityCorrectness"] = m
         total_tokens += m["tokens"]
 
-    # ---- 综合得分：已出分指标的均值 ----
+    # ---- 综合得分：选中且已出分指标的均值 ----
     scores = [v["score"] for v in judge.values() if v.get("score") is not None]
     overall = round(sum(scores) / len(scores), 4) if scores else None
 

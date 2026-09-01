@@ -28,13 +28,14 @@ public class PythonServiceClient {
     /**
      * 调用 Python 抽取接口
      *
-     * @param text      待抽取文本
-     * @param ontology  本体 JSON: {entities:[{name, properties}], relations:[{name, source, target, properties}]}
-     * @param modelId   图谱模型 id
-     * @param mode      抽取模式: zero_shot / few_shot / open
+     * @param text       待抽取文本
+     * @param ontology   本体 JSON: {entities:[{name, properties}], relations:[{name, source, target, properties}]}
+     * @param modelId    图谱模型 id
+     * @param mode       抽取模式: zero_shot / few_shot / open
+     * @param llmModelId 抽取 LLM 模型 id（可选，空则用 Python 服务默认配置）
      * @return Python 响应 JSON: {entities:[], relations:[], tokenConsumed, duration}
      */
-    public JSONObject extract(String text, Object ontology, Long modelId, String mode) {
+    public JSONObject extract(String text, Object ontology, Long modelId, String mode, Long llmModelId) {
         if (StrUtil.isBlank(text)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "待抽取文本为空");
         }
@@ -43,6 +44,9 @@ public class PythonServiceClient {
         payload.put("ontology", ontology);
         payload.put("modelId", modelId);
         payload.put("mode", mode);
+        if (ObjUtil.isNotNull(llmModelId)) {
+            payload.put("llmModelId", llmModelId);
+        }
 
         return doPost(pythonServiceUrl + "/api/extract", payload, modelId, "LLM");
     }

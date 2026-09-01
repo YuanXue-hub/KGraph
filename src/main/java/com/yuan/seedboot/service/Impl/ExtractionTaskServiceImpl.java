@@ -83,7 +83,7 @@ public class ExtractionTaskServiceImpl extends ServiceImpl<ExtractionTaskMapper,
         long startTs = System.currentTimeMillis();
         try {
             String mode = StrUtil.blankToDefault(request.getMode(), "zero_shot");
-            JSONObject resp = pythonServiceClient.extract(text, ontology, request.getModelId(), mode);
+            JSONObject resp = pythonServiceClient.extract(text, ontology, request.getModelId(), mode, request.getLlmModelId());
 
             // 5. 填充结果
             task.setResult(resp.toString());
@@ -369,6 +369,9 @@ public class ExtractionTaskServiceImpl extends ServiceImpl<ExtractionTaskMapper,
     private String buildInputConfig(ExtractionRequest request) {
         Map<String, Object> config = new HashMap<>();
         config.put("mode", StrUtil.blankToDefault(request.getMode(), "zero_shot"));
+        if (request.getLlmModelId() != null) {
+            config.put("llmModelId", request.getLlmModelId());
+        }
         return cn.hutool.json.JSONUtil.toJsonStr(config);
     }
 

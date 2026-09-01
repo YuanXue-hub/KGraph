@@ -97,26 +97,28 @@ class MysqlClient:
             ]
 
     def get_llm_models(self, enabled_only: bool = True) -> List[Dict]:
-        """查询 LLM 模型配置清单（供问答模型选择）。"""
+        """查询 LLM 模型配置清单（供问答模型选择，逻辑删除过滤）。"""
         self._ensure_connection()
         sql = (
             "SELECT id, provider, model_name, display_name, base_url, api_key, "
-            "is_reasoner, temperature, enabled, sort_order FROM llm_model"
+            "is_reasoner, temperature, enabled, sort_order, userId FROM llm_model "
+            "WHERE isDeleted = 0"
         )
         if enabled_only:
-            sql += " WHERE enabled = 1"
+            sql += " AND enabled = 1"
         sql += " ORDER BY sort_order ASC, id ASC"
         with self.connection.cursor() as cursor:
             cursor.execute(sql)
             return cursor.fetchall() or []
 
     def get_llm_model_by_id(self, model_id: int) -> Optional[Dict]:
-        """按 id 查询单个 LLM 模型配置（供问答时动态构造 LLM）。"""
+        """按 id 查询单个 LLM 模型配置（供问答时动态构造 LLM，逻辑删除过滤）。"""
         self._ensure_connection()
         with self.connection.cursor() as cursor:
             cursor.execute(
                 "SELECT id, provider, model_name, display_name, base_url, api_key, "
-                "is_reasoner, temperature, enabled FROM llm_model WHERE id = %s",
+                "is_reasoner, temperature, enabled, userId FROM llm_model "
+                "WHERE id = %s AND isDeleted = 0",
                 (model_id,),
             )
             return cursor.fetchone()

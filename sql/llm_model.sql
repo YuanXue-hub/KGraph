@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS llm_model (
     temperature DECIMAL(3,2) DEFAULT 0.30 COMMENT '默认温度',
     enabled     TINYINT      DEFAULT 1 COMMENT '是否启用: 0-否 1-是',
     sort_order  INT          DEFAULT 0 COMMENT '前端展示排序',
+    userId      BIGINT       NULL COMMENT '所属用户ID（预留，模型管理用）',
+    isDeleted   TINYINT(1)   DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
     create_time DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),

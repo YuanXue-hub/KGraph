@@ -24,6 +24,12 @@
                       </el-select>
                     </el-form-item>
 
+                    <el-form-item label="抽取模型">
+                      <el-select v-model="extractLlmModelId" placeholder="选择 LLM 模型" filterable :loading="extractLlmLoading" style="width: 100%">
+                        <el-option v-for="m in extractLlmModels" :key="m.id" :label="m.displayName || m.modelName" :value="m.id" />
+                      </el-select>
+                    </el-form-item>
+
                     <el-form-item label="语料来源">
                       <div class="corpus-source">
                         <div class="corpus-tabs">
@@ -279,7 +285,7 @@
                 <div v-else class="eval-meta">
                   <el-tag type="primary" effect="plain">实体 {{ evalTarget.entities?.length || 0 }}</el-tag>
                   <el-tag type="success" effect="plain">关系 {{ evalTarget.relations?.length || 0 }}</el-tag>
-                  <span class="eval-meta-text">评估对象：抽取任务 #{{ evalTaskId }}；内在指标全量计算，LLM 裁判{{ evalSampleSize === 0 ? '全量判定' : '按抽样判定' }}</span>
+                  <span class="eval-meta-text">评估对象：抽取任务 #{{ evalTaskId }}；内在指标全量计算，LLM 裁判{{ evalSampleSize === 0 ? '全量判定' : '按抽样判定' }}；已选指标 {{ selectedMetricKeys.length }}/{{ EVAL_METRICS.length }}</span>
                 </div>
 
                 <div v-if="evalTarget" class="eval-text-row">
@@ -296,7 +302,25 @@
                   <el-button v-if="evalTextOverride" size="small" text type="danger" @click="clearEvalTextOverride">恢复自动</el-button>
                 </div>
 
+                <div class="eval-metrics-row">
+                  <span class="eval-label">评估指标</span>
+                  <div class="eval-metrics-group">
+                    <el-checkbox
+                      v-for="m in EVAL_METRICS"
+                      :key="m.key"
+                      v-model="evalMetrics[m.key]"
+                    >{{ m.name }}</el-checkbox>
+                  </div>
+                  <el-button size="small" text type="primary" @click="toggleAllMetrics">
+                    {{ isAllMetricsSelected ? '全不选' : '全选' }}
+                  </el-button>
+                </div>
+
                 <div class="eval-actions">
+                  <span class="eval-label">裁判模型</span>
+                  <el-select v-model="evalLlmModelId" :loading="evalLlmLoading" placeholder="默认模型" clearable style="width: 170px">
+                    <el-option v-for="m in evalLlmModels" :key="m.id" :value="m.id" :label="m.displayName" />
+                  </el-select>
                   <span class="eval-label">LLM 裁判抽样数量</span>
                   <el-select v-model="evalSampleSize" style="width: 110px">
                     <el-option v-for="n in [10, 20, 30, 50]" :key="n" :value="n" :label="`${n} 条`" />
@@ -602,6 +626,37 @@ const extracting = ref(false)
 const result = ref<ExtractResult | null>(null)
 const stepActive = ref(0)
 
+// 抽取模型选择（llm_model 表，enabled=1，逻辑删除过滤）
+interface ExtractLlmModel { id: number; displayName: string; modelName: string }
+const extractLlmModels = ref<ExtractLlmModel[]>([])
+const extractLlmModelId = ref<number | undefined>()
+const extractLlmLoading = ref(false)
+
+async function loadExtractLlmModels() {
+  extractLlmLoading.value = true
+  try {
+    const res = await fetch('/api/v1/chat/llm-models', { credentials: 'include' })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const json = await res.json()
+    const raw = Array.isArray(json) ? json : (json?.data ?? [])
+    const list: ExtractLlmModel[] = (Array.isArray(raw) ? raw : []) as ExtractLlmModel[]
+    if (list.length) {
+      extractLlmModels.value = list
+      const saved = Number(localStorage.getItem('kg_extract_llm_model_id') || '')
+      const fallback = list.find(m => m.modelName === 'deepseek-chat')?.id || list[0].id
+      extractLlmModelId.value = list.some(m => m.id === saved) ? saved : fallback
+    }
+  } catch {
+    extractLlmModels.value = []
+  } finally {
+    extractLlmLoading.value = false
+  }
+}
+
+watch(extractLlmModelId, (v) => {
+  if (v) localStorage.setItem('kg_extract_llm_model_id', String(v))
+})
+
 // 实体关系配置
 const activeConfigTab = ref('extract')
 const modelEntityTypes = ref<string[]>([])
@@ -852,7 +907,8 @@ async function handleExtract() {
       inputText: corpusMode.value === 'manual' ? inputText.value : undefined,
       mode: 'zero_shot',
       customEntityTypes: getEffectiveEntityTypes(),
-      customRelationTypes: getEffectiveRelationTypes()
+      customRelationTypes: getEffectiveRelationTypes(),
+      llmModelId: extractLlmModelId.value
     })
     result.value = parseResult(res.data)
     stepActive.value = 4
@@ -940,6 +996,60 @@ function formatTime(t?: string): string {
 const pageTab = ref('extract')
 const evaluating = ref(false)
 const evalSampleSize = ref(30)
+
+// 可选评估指标（与 Python evaluation.py 的裁判指标一一对应）
+const EVAL_METRICS = [
+  { key: 'tripleFaithfulness', name: '三元组忠实度' },
+  { key: 'predicateReasonableness', name: '谓词合理性' },
+  { key: 'bitemporalCorrectness', name: '双时态正确性' },
+  { key: 'evidenceValidity', name: '证据句有效性' },
+  { key: 'entityCorrectness', name: '实体边界正确性' },
+] as const
+type EvalMetricKey = (typeof EVAL_METRICS)[number]['key']
+
+const evalMetrics = ref<Record<EvalMetricKey, boolean>>({
+  tripleFaithfulness: true,
+  predicateReasonableness: true,
+  bitemporalCorrectness: true,
+  evidenceValidity: true,
+  entityCorrectness: true,
+})
+
+const selectedMetricKeys = computed(() => EVAL_METRICS.filter(m => evalMetrics.value[m.key]).map(m => m.key))
+const isAllMetricsSelected = computed(() => selectedMetricKeys.value.length === EVAL_METRICS.length)
+
+function toggleAllMetrics() {
+  const target = !isAllMetricsSelected.value
+  EVAL_METRICS.forEach(m => { evalMetrics.value[m.key] = target })
+}
+
+// 裁判模型选择（llm_model 表，enabled=1，逻辑删除过滤）
+interface EvalLlmModel { id: number; displayName: string; modelName: string }
+const evalLlmModels = ref<EvalLlmModel[]>([])
+const evalLlmModelId = ref<number | undefined>()
+const evalLlmLoading = ref(false)
+
+async function loadEvalLlmModels() {
+  evalLlmLoading.value = true
+  try {
+    const res = await fetch('/api/v1/chat/llm-models', { credentials: 'include' })
+    if (!res.ok) throw new Error('HTTP ' + res.status)
+    const json = await res.json()
+    const raw = Array.isArray(json) ? json : (json?.data ?? [])
+    const list: EvalLlmModel[] = (Array.isArray(raw) ? raw : []) as EvalLlmModel[]
+    if (list.length) {
+      evalLlmModels.value = list
+      const saved = Number(localStorage.getItem('kg_llm_model_id') || '')
+      const fallback = list.find(m => m.modelName === 'deepseek-chat')?.id || list[0].id
+      evalLlmModelId.value = list.some(m => m.id === saved) ? saved : fallback
+    }
+  } catch (e) {
+    evalLlmModels.value = []
+    console.warn('[KGraph] 评估裁判模型清单加载失败:', e)
+  } finally {
+    evalLlmLoading.value = false
+  }
+}
 
 // 评估配置：选择抽取任务 + 评估语料即可评估，无需先抽取
 const evalHistory = ref<any[]>([])
@@ -1337,6 +1447,10 @@ async function handleEvaluate() {
     openCorpusPick()
     return
   }
+  if (!selectedMetricKeys.value.length) {
+    ElMessage.warning('请至少选择一个评估指标')
+    return
+  }
   evaluating.value = true
   try {
     const res = await extractionApi.evaluate({
@@ -1344,7 +1458,9 @@ async function handleEvaluate() {
       entities: target.entities,
       relations: target.relations,
       sampleSize: evalSampleSize.value,
+      llmModelId: evalLlmModelId.value,
       taskId: evalTaskId.value,
+      metrics: selectedMetricKeys.value,
     })
     evalResult.value = res.data
     evalRecordsPage.value = 1
@@ -1360,8 +1476,10 @@ async function handleEvaluate() {
 onMounted(() => {
   loadProjects()
   loadHistory()
+  loadExtractLlmModels()
   loadEvalHistory()
   loadEvalRecords()
+  loadEvalLlmModels()
 })
 </script>
 
@@ -1854,6 +1972,29 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-3, #86909c);
   margin-left: 8px;
+}
+
+.eval-metrics-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--bg-soft, #f7f8fa);
+  border-radius: var(--r-md, 8px);
+}
+
+.eval-metrics-group {
+  display: flex;
+  align-items: center;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.eval-metrics-group :deep(.el-checkbox) {
+  margin-right: 0;
+  height: auto;
 }
 
 .eval-actions {

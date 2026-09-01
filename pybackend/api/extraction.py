@@ -429,6 +429,24 @@ def _to_api_payload(
 @router.post("/api/extract", response_model=ExtractionResult)
 def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
     llm_client: LLMClient = request.app.state.llm_client
+    # 抽取模型可指定（llm_model 表 id）：动态构造，无效则回退服务默认配置
+    if req.llmModelId:
+        try:
+            from core.mysql_client import MysqlClient
+            row = MysqlClient().get_llm_model_by_id(int(req.llmModelId))
+            if row and row.get("enabled"):
+                llm_client = LLMClient({
+                    "model": {
+                        "model_name": row["model_name"],
+                        "api_key": row["api_key"],
+                        "base_url": row["base_url"],
+                        "timeout_sec": 300.0,
+                        "max_retries": 1,
+                    }
+                })
+        except Exception:
+            import traceback
+            traceback.print_exc()
     graph_writer: GraphWriter = request.app.state.graph_writer
     text = (req.text or "").strip()
     if not text:

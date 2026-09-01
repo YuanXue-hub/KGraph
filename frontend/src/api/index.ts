@@ -366,10 +366,11 @@ export const extractionApi = {
     mode?: string
     customEntityTypes?: string[]
     customRelationTypes?: string[]
+    llmModelId?: number
   }) {
     return request({ url: '/extraction/llm', method: 'post', data, timeout: 300000 })
   },
-  evaluate(data: { text: string; entities: any[]; relations: any[]; sampleSize?: number; taskId?: number }) {
+  evaluate(data: { text: string; entities: any[]; relations: any[]; sampleSize?: number; llmModelId?: number; taskId?: number; metrics?: string[] }) {
     return request({ url: '/extraction/evaluate', method: 'post', data, timeout: 600000 })
   },
   evaluationList(taskId: number | undefined, params: { pageNum: number; pageSize: number; sortField?: string; sortOrder?: string }) {
