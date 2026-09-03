@@ -24,6 +24,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Map;
 
@@ -113,7 +114,52 @@ public class ExtractionController {
             throw new com.yuan.seedboot.exception.BusinessException(ErrorCode.OPERATION_ERROR,
                     "评估结果解析失败: " + e.getMessage());
         }
-        // 持久化评估历史（taskId 由前端传入；保存失败不阻断评估结果返回）
+        Long evaluationId = persistEvaluation(request, result.toString(), plain, loginUser);
+        if (evaluationId != null) {
+            plain.put("evaluationId", evaluationId);
+        }
+        return ResultUtils.success(plain);
+    }
+
+    @PostMapping("/evaluate/stream")
+    @Operation(summary = "LLM 抽取质量评估（流式：逐指标 SSE 实时推送），完成后存入评估历史并推送 evaluationId")
+    public SseEmitter evaluateStream(@RequestBody Map<String, Object> request, HttpServletRequest httpRequest) {
+        ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
+        User loginUser = userService.getLoginUser(httpRequest);
+        SseEmitter emitter = new SseEmitter(600_000L);
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            String reportJson;
+            try {
+                // 逐事件转发给前端，返回聚合后的完整评估报告
+                reportJson = pythonServiceClient.evaluateStreamForward(request, emitter);
+            } catch (Exception e) {
+                emitter.completeWithError(e);
+                return;
+            }
+            // 持久化评估历史（聚合报告与 /evaluate 返回结构一致），补发 saved 事件（带 evaluationId）
+            if (reportJson != null) {
+                try {
+                    Map<String, Object> plain = new com.fasterxml.jackson.databind.ObjectMapper()
+                            .readValue(reportJson, Map.class);
+                    Long evaluationId = persistEvaluation(request, reportJson, plain, loginUser);
+                    if (evaluationId != null) {
+                        emitter.send(SseEmitter.event().name("saved")
+                                .data("{\"evaluationId\":" + evaluationId + "}"));
+                    }
+                } catch (Exception ignore) {
+                    // 历史保存失败不影响评估本身
+                }
+            }
+            emitter.complete();
+        });
+        return emitter;
+    }
+
+    /**
+     * 持久化评估历史（taskId 由前端传入；保存失败不阻断评估结果返回，返回 null）
+     */
+    private Long persistEvaluation(Map<String, Object> request, String resultJson,
+                                   Map<String, Object> plain, User loginUser) {
         try {
             EvaluationRecord record = new EvaluationRecord();
             Object taskIdObj = request.get("taskId");
@@ -122,18 +168,18 @@ public class ExtractionController {
             record.setSampleSize(sampleObj != null ? Integer.parseInt(String.valueOf(sampleObj)) : 30);
             Object overallObj = plain.get("overall");
             record.setOverall(overallObj != null ? Double.parseDouble(String.valueOf(overallObj)) : null);
-            record.setResult(result.toString());
+            record.setResult(resultJson);
             Object tokenObj = plain.get("tokenConsumed");
             record.setTokenConsumed(tokenObj != null ? Integer.parseInt(String.valueOf(tokenObj)) : null);
             Object durObj = plain.get("duration");
             record.setDuration(durObj != null ? Long.parseLong(String.valueOf(durObj)) : null);
             record.setCreateBy(loginUser != null ? loginUser.getId() : null);
             evaluationRecordService.save(record);
-            plain.put("evaluationId", record.getId());
+            return record.getId();
         } catch (Exception ignore) {
             // 历史保存失败不影响评估本身
+            return null;
         }
-        return ResultUtils.success(plain);
     }
 
     @GetMapping("/evaluate/list")

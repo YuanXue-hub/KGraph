@@ -11,6 +11,7 @@ import com.yuan.seedboot.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -126,6 +127,84 @@ public class PythonServiceClient {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "待评估原文为空");
         }
         return doPost(pythonServiceUrl + "/api/evaluate", payload, null, "EVAL");
+    }
+
+    /**
+     * 调用 Python 流式评估接口（SSE），逐事件转发给 SseEmitter（不调用 complete，由调用方收尾），
+     * 同时聚合完整评估报告（结构同 /api/evaluate 返回）供持久化
+     *
+     * @param payload 评估请求（同 evaluate）
+     * @param emitter Spring SSE 发射器，事件原样转发给前端
+     * @return 完整评估报告 JSON 字符串（含 intrinsic/llmJudge/overall 等；无 done 事件时为 null）
+     */
+    public String evaluateStreamForward(Map<String, Object> payload, SseEmitter emitter) {
+        String url = pythonServiceUrl + "/api/evaluate/stream";
+        String body = JSONUtil.toJsonStr(payload);
+        log.info("调用 Python 流式评估服务, url={}, textLength={}",
+                url, payload.get("text") == null ? 0 : String.valueOf(payload.get("text")).length());
+
+        try (HttpResponse response = HttpRequest.post(url)
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .body(body)
+                .timeout(600_000)
+                .executeAsync()) {
+            if (!response.isOk()) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR,
+                        "Python 评估服务返回失败: " + response.getStatus());
+            }
+            // 聚合完整报告：{intrinsic:{}, llmJudge:{key:{...}}, overall, ...}
+            cn.hutool.json.JSONConfig cfg = cn.hutool.json.JSONConfig.create().setIgnoreNullValue(false);
+            JSONObject report = new JSONObject(cfg);
+            JSONObject judgeAgg = new JSONObject(cfg);
+            boolean hasDone = false;
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(response.bodyStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                String eventName = "message";
+                StringBuilder dataBuf = new StringBuilder();
+                while ((line = reader.readLine()) != null) {
+                    if (line.isEmpty()) {
+                        if (dataBuf.length() > 0) {
+                            String data = dataBuf.toString();
+                            switch (eventName) {
+                                case "intrinsic" -> report.set("intrinsic", JSONUtil.parseObj(data));
+                                case "metric" -> {
+                                    JSONObject m = JSONUtil.parseObj(data);
+                                    judgeAgg.set(m.getStr("key"), m.get("data"));
+                                }
+                                case "done" -> {
+                                    hasDone = true;
+                                    JSONObject d = JSONUtil.parseObj(data);
+                                    for (String k : d.keySet()) {
+                                        report.set(k, d.get(k));
+                                    }
+                                }
+                                default -> { /* error 等事件只转发不聚合 */ }
+                            }
+                            emitter.send(SseEmitter.event().name(eventName).data(data));
+                            dataBuf.setLength(0);
+                            eventName = "message";
+                        }
+                    } else if (line.startsWith("event:")) {
+                        eventName = line.substring(6).trim();
+                    } else if (line.startsWith("data:")) {
+                        dataBuf.append(line.substring(5).trim());
+                    }
+                }
+            }
+            if (!hasDone) {
+                return null;
+            }
+            report.set("llmJudge", judgeAgg);
+            return report.toString();
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("调用 Python 流式评估服务异常, url={}", url, e);
+            throw new BusinessException(ErrorCode.OPERATION_ERROR,
+                    "调用 Python 流式评估服务异常: " + e.getMessage());
+        }
     }
 
     /**

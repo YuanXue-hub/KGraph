@@ -273,16 +273,7 @@
                   <el-button :icon="Refresh" @click="loadEvalHistory">刷新</el-button>
                 </div>
 
-                <el-alert
-                  v-if="!evalTarget"
-                  type="info"
-                  :closable="false"
-                  show-icon
-                  title="请选择抽取结果"
-                  description="选择抽取任务后自动加载其实体与关系数据，并按任务关联语料自动带入评估原文"
-                />
-
-                <div v-else class="eval-meta">
+                <div v-if="evalTarget" class="eval-meta">
                   <el-tag type="primary" effect="plain">实体 {{ evalTarget.entities?.length || 0 }}</el-tag>
                   <el-tag type="success" effect="plain">关系 {{ evalTarget.relations?.length || 0 }}</el-tag>
                   <span class="eval-meta-text">评估对象：抽取任务 #{{ evalTaskId }}；内在指标全量计算，LLM 裁判{{ evalSampleSize === 0 ? '全量判定' : '按抽样判定' }}；已选指标 {{ selectedMetricKeys.length }}/{{ EVAL_METRICS.length }}</span>
@@ -369,17 +360,30 @@
               <span class="eval-panel-title"><span class="eval-bar"></span>评估报告</span>
               <div class="eval-header-extra">
                 <el-tag v-if="evalResult?.evaluationId" type="warning" effect="plain">历史 #{{ evalResult?.evaluationId }}</el-tag>
+                <el-tag v-if="evalResult?.judgeModel" type="primary" effect="plain">裁判模型 {{ evalResult?.judgeModel }}</el-tag>
                 <el-tag v-if="evalResult?.duration" type="info" effect="plain">耗时 {{ evalResult?.duration }}ms</el-tag>
                 <el-tag v-if="evalResult?.tokenConsumed" type="info" effect="plain">Token {{ evalResult?.tokenConsumed }}</el-tag>
                 <span class="eval-sample-text">关系抽样 {{ evalResult?.sampledRelations }} 条 / 实体抽样 {{ evalResult?.sampledEntities }} 条</span>
               </div>
             </div>
             <div class="eval-panel-body">
+              <div v-if="evaluating" class="eval-progress-row">
+                <el-progress
+                  :percentage="evalProgress && evalProgress.total ? Math.round(evalProgress.done / evalProgress.total * 100) : 0"
+                  :stroke-width="14"
+                  :status="evalProgress && evalProgress.done >= evalProgress.total ? 'success' : undefined"
+                />
+                <span class="eval-progress-text">
+                  已评估指标 {{ evalProgress?.done ?? 0 }}/{{ evalProgress?.total ?? 0 }}
+                  <template v-if="evalProgress?.current">· 最新完成：{{ evalProgress.current }}</template>
+                </span>
+              </div>
               <div class="eval-overview">
                 <div class="eval-overall-score">
                   <div class="eval-score-num" :class="scoreClass(evalResult?.overall)">{{ formatScore(evalResult?.overall) }}</div>
                   <div class="eval-score-label">综合得分（LLM 裁判均值）</div>
                 </div>
+                <div v-if="evalRadarReady" ref="evalRadarRef" class="eval-radar"></div>
                 <div class="eval-intrinsic-grid">
                   <div class="eval-stat" v-for="s in intrinsicStats" :key="s.label">
                     <div class="eval-stat-value">{{ s.value }}</div>
@@ -400,17 +404,18 @@
                 <span v-if="isolatedList.length > 20" class="eval-isolated-more">等共 {{ isolatedList.length }} 个</span>
               </div>
 
-              <h4 class="eval-section-title">LLM 裁判指标（G-Eval）</h4>
+              <h4 class="eval-section-title">LLM 裁判指标（G-Eval · 三级判定）</h4>
               <el-table :data="judgeRows" border>
                 <el-table-column type="expand">
                   <template #default="{ row }">
                     <div class="eval-detail-list">
                       <div v-if="!row.details.length" class="eval-detail-empty">无明细数据</div>
-                      <div v-for="(d, i) in row.details" :key="i" class="eval-detail-item">
-                        <el-tag :type="d.pass ? 'success' : 'danger'" size="small" effect="dark">{{ d.pass ? '通过' : '未通过' }}</el-tag>
+                      <div v-for="(d, i) in row.details" :key="i" class="eval-detail-item is-clickable" @click="openDrill(row, d)">
+                        <el-tag :type="detailVerdictType(d)" size="small" effect="dark">{{ detailVerdictText(d) }}</el-tag>
                         <span class="eval-detail-item-text">{{ formatDetailItem(row.key, d) }}</span>
                         <span v-if="d.reason" class="eval-detail-reason">{{ d.reason }}</span>
                       </div>
+                      <div class="eval-detail-tip">点击任意样本可查看原文定位与高亮</div>
                     </div>
                   </template>
                 </el-table-column>
@@ -521,6 +526,7 @@
             <div class="cmp-toolbar">
               <el-switch v-model="highlightAdvantage" active-text="高亮优势项" />
             </div>
+            <div v-if="cmpRadarKeys.length >= 3" ref="cmpRadarRef" class="cmp-radar"></div>
             <div class="cmp-reports" :class="`is-${compareRecords.length}`" v-loading="comparing">
               <div
                 v-for="(rec, si) in compareRecords"
@@ -582,6 +588,23 @@
               </div>
             </div>
           </el-dialog>
+
+          <!-- 失败样本下钻弹窗（原文定位 + 实体/证据高亮） -->
+          <el-dialog v-model="drillVisible" :title="`样本详情 · ${drillData?.metricName || ''}`" width="760px" append-to-body>
+            <div v-if="drillData" class="drill-body">
+              <div class="drill-sample">
+                <el-tag :type="detailVerdictType(drillData.detail)" size="small" effect="dark">
+                  {{ detailVerdictText(drillData.detail) }}
+                </el-tag>
+                <span class="drill-sample-text">{{ formatDetailItem(drillData.metricKey, drillData.detail) }}</span>
+              </div>
+              <div v-if="drillData.detail.reason" class="drill-reason">
+                <span class="drill-reason-label">裁判理由：</span>{{ drillData.detail.reason }}
+              </div>
+              <div class="drill-text-label">原文（高亮为样本涉及实体/证据）</div>
+              <div class="drill-text" v-html="drillHtml"></div>
+            </div>
+          </el-dialog>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -592,6 +615,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
+import * as echarts from 'echarts'
 import { projectApi, modelApi, corpusApi, extractionApi, entityTypeApi, relationTypeApi } from '@/api'
 import { exportExtractionTask } from '@/utils/export'
 import ExtractionLayout from '@/components/ExtractionLayout.vue'
@@ -1170,6 +1194,7 @@ interface EvalResult {
   sampledRelations: number
   sampledEntities: number
   tokenConsumed?: number
+  judgeModel?: string
   duration?: number
   evaluationId?: number
   evalCreateTime?: number | null
@@ -1436,6 +1461,182 @@ function formatDetailItem(key: string, d: any): string {
   return parts.join(' ')
 }
 
+// ==================== 三级判定（2=完全通过 / 1=部分正确 / 0=未通过） ====================
+/** 兼容旧数据：无 verdict 时按 pass 布尔推断（true→2 / false→0） */
+function detailVerdict(d: any): number {
+  if (d?.verdict != null) return Number(d.verdict)
+  return d?.pass ? 2 : 0
+}
+
+function detailVerdictText(d: any): string {
+  const v = detailVerdict(d)
+  return v === 2 ? '通过' : v === 1 ? '部分正确' : '未通过'
+}
+
+function detailVerdictType(d: any): 'success' | 'warning' | 'danger' {
+  const v = detailVerdict(d)
+  return v === 2 ? 'success' : v === 1 ? 'warning' : 'danger'
+}
+
+// ==================== 失败样本下钻（原文定位 + 证据高亮） ====================
+const drillVisible = ref(false)
+const drillData = ref<{ metricName: string; metricKey: string; detail: any } | null>(null)
+
+function openDrill(row: any, d: any) {
+  drillData.value = { metricName: row.name, metricKey: row.key, detail: d }
+  drillVisible.value = true
+}
+
+/** 下钻弹窗原文 HTML：高亮样本中的实体名/证据片段出现位置 */
+const drillHtml = computed(() => {
+  const d = drillData.value?.detail
+  const text = evalTextUsed.value
+  if (!d || !text) return ''
+  const kws = [d.head, d.tail, d.name, d.evidence]
+    .filter((k): k is string => Boolean(k) && String(k).length > 1)
+    .map(String)
+  const uniq = [...new Set(kws)].sort((a, b) => b.length - a.length)
+  let html = escapeHtml(text)
+  for (const kw of uniq) {
+    const esc = escapeReg(escapeHtml(kw))
+    html = html.replace(new RegExp(esc, 'g'), (m) => `<mark>${m}</mark>`)
+  }
+  return html
+})
+
+// ==================== 评估雷达图（单报告 + 对比重叠） ====================
+const evalRadarRef = ref<HTMLElement>()
+let evalRadarChart: echarts.ECharts | null = null
+
+/** 雷达图至少 3 个已出分指标才有意义 */
+const evalRadarReady = computed(
+  () => judgeRows.value.filter(r => r.score !== null && r.score !== undefined).length >= 3,
+)
+
+function renderEvalRadar() {
+  if (!evalRadarReady.value || !evalRadarRef.value) return
+  if (!evalRadarChart) evalRadarChart = echarts.init(evalRadarRef.value)
+  const rows = judgeRows.value.filter(r => r.score !== null && r.score !== undefined)
+  evalRadarChart.setOption(
+    {
+      radar: {
+        indicator: rows.map(r => ({ name: r.name, max: 1 })),
+        radius: '62%',
+        axisName: { color: '#6b7280', fontSize: 11 },
+        splitArea: { areaStyle: { color: ['#ffffff', '#f7f9fc'] } },
+      },
+      series: [
+        {
+          type: 'radar',
+          areaStyle: { opacity: 0.25, color: '#165dff' },
+          lineStyle: { color: '#165dff', width: 2 },
+          itemStyle: { color: '#165dff' },
+          data: [{ value: rows.map(r => r.score), name: '本次评估' }],
+        },
+      ],
+    },
+    { notMerge: true },
+  )
+}
+
+watch(
+  () => judgeRows.value.map(r => r.score).join(','),
+  () => nextTick(renderEvalRadar),
+)
+
+// 对比弹窗重叠雷达图（A/B/C 三组同图）
+const cmpRadarRef = ref<HTMLElement>()
+let cmpRadarChart: echarts.ECharts | null = null
+
+const CMP_RADAR_COLORS = ['#165dff', '#e6a23c', '#67c23a']
+
+/** 对比记录的公共已出分指标（交集 >= 3 才渲染雷达图） */
+const cmpRadarKeys = computed<string[]>(() => {
+  const rs = compareResults.value
+  if (!rs || rs.length < 2) return []
+  let keys = new Set(Object.keys(rs[0]?.llmJudge || {}))
+  for (const r of rs.slice(1)) {
+    keys = new Set([...keys].filter(k => (r.llmJudge as any)?.[k]?.score != null))
+  }
+  return [...keys].filter(k => (rs[0].llmJudge as any)?.[k]?.score != null)
+})
+
+function renderCmpRadar() {
+  const rs = compareResults.value
+  if (!rs || rs.length < 2 || cmpRadarKeys.value.length < 3 || !cmpRadarRef.value) return
+  if (!cmpRadarChart) cmpRadarChart = echarts.init(cmpRadarRef.value)
+  const keys = cmpRadarKeys.value
+  cmpRadarChart.setOption(
+    {
+      legend: { bottom: 0, textStyle: { fontSize: 11, color: '#4b5563' } },
+      radar: {
+        indicator: keys.map(k => ({ name: JUDGE_METRIC_NAMES[k] || k, max: 1 })),
+        radius: '58%',
+        axisName: { color: '#6b7280', fontSize: 11 },
+        splitArea: { areaStyle: { color: ['#ffffff', '#f7f9fc'] } },
+      },
+      series: [
+        {
+          type: 'radar',
+          data: rs.map((r, i) => ({
+            value: keys.map(k => (r.llmJudge as any)?.[k]?.score ?? 0),
+            name: `${String.fromCharCode(65 + i)} · 评估#${compareRecords.value[i]?.id ?? ''}`,
+            lineStyle: { color: CMP_RADAR_COLORS[i % 3], width: 2 },
+            itemStyle: { color: CMP_RADAR_COLORS[i % 3] },
+            areaStyle: { opacity: 0.12, color: CMP_RADAR_COLORS[i % 3] },
+          })),
+        },
+      ],
+    },
+    { notMerge: true },
+  )
+}
+
+watch(compareResultVisible, (v) => {
+  if (v) nextTick(renderCmpRadar)
+})
+
+// ==================== 流式评估（逐指标 SSE 实时出分） ====================
+const evalProgress = ref<{ done: number; total: number; current: string } | null>(null)
+
+/** 解析一个 SSE 帧（event: xxx / data: yyy） */
+function parseSseFrame(frame: string): { event: string; data: string } | null {
+  let event = 'message'
+  let data = ''
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice(6).trim()
+    else if (line.startsWith('data:')) data += line.slice(5).trim()
+  }
+  return data ? { event, data } : null
+}
+
+/** 处理单个评估事件：增量更新 evalResult，实现逐指标出分 */
+function handleEvalEvent(event: string, dataStr: string) {
+  let data: any
+  try {
+    data = JSON.parse(dataStr)
+  } catch {
+    return
+  }
+  const r = evalResult.value
+  if (!r) return
+  if (event === 'intrinsic') {
+    r.intrinsic = data
+  } else if (event === 'metric') {
+    r.llmJudge[data.key] = data.data
+    if (evalProgress.value) {
+      evalProgress.value.done += 1
+      evalProgress.value.current = data.label || ''
+    }
+  } else if (event === 'done') {
+    Object.assign(r, data)
+  } else if (event === 'saved') {
+    r.evaluationId = data.evaluationId
+  } else if (event === 'error') {
+    ElMessage.error(data.message || '评估失败')
+  }
+}
+
 async function handleEvaluate() {
   const target = evalTarget.value
   if (!target || (!target.entities?.length && !target.relations?.length)) {
@@ -1452,24 +1653,54 @@ async function handleEvaluate() {
     return
   }
   evaluating.value = true
+  evalProgress.value = { done: 0, total: selectedMetricKeys.value.length, current: '' }
+  // 骨架报告：流式事件逐指标填充，表格/雷达图实时刷新
+  evalResult.value = {
+    intrinsic: {} as EvalResult['intrinsic'],
+    llmJudge: {},
+    overall: null,
+    sampledRelations: 0,
+    sampledEntities: 0,
+  }
   try {
-    const res = await extractionApi.evaluate({
-      text: evalTextUsed.value,
-      entities: target.entities,
-      relations: target.relations,
-      sampleSize: evalSampleSize.value,
-      llmModelId: evalLlmModelId.value,
-      taskId: evalTaskId.value,
-      metrics: selectedMetricKeys.value,
+    const res = await fetch('/api/extraction/evaluate/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        text: evalTextUsed.value,
+        entities: target.entities,
+        relations: target.relations,
+        sampleSize: evalSampleSize.value,
+        llmModelId: evalLlmModelId.value,
+        taskId: evalTaskId.value,
+        metrics: selectedMetricKeys.value,
+      }),
     })
-    evalResult.value = res.data
-    evalRecordsPage.value = 1
-    loadEvalRecords()
-    ElMessage.success('评估完成')
-  } catch {
-    // request 层已提示
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`)
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const frame = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        const ev = parseSseFrame(frame)
+        if (ev) handleEvalEvent(ev.event, ev.data)
+      }
+    }
+    if (evalResult.value?.overall != null) ElMessage.success('评估完成')
+  } catch (e) {
+    ElMessage.error('评估失败：' + (e as Error).message)
   } finally {
     evaluating.value = false
+    evalProgress.value = null
+    evalRecordsPage.value = 1
+    loadEvalRecords()
   }
 }
 
@@ -1995,6 +2226,109 @@ onMounted(() => {
 .eval-metrics-group :deep(.el-checkbox) {
   margin-right: 0;
   height: auto;
+}
+
+.eval-progress-row {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eval-progress-row :deep(.el-progress) {
+  flex: 1;
+}
+
+.eval-progress-text {
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.eval-radar {
+  width: 240px;
+  height: 200px;
+  flex-shrink: 0;
+}
+
+.eval-detail-item.is-clickable {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 3px 6px;
+  margin: 0 -6px;
+  transition: background 0.15s;
+}
+
+.eval-detail-item.is-clickable:hover {
+  background: #f0f4ff;
+}
+
+.eval-detail-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.cmp-radar {
+  width: 100%;
+  height: 320px;
+  margin-bottom: 12px;
+}
+
+.drill-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drill-sample {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drill-sample-text {
+  font-size: 14px;
+  color: #1f2937;
+  font-weight: 500;
+}
+
+.drill-reason {
+  padding: 8px 12px;
+  background: #f7f8fa;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.drill-reason-label {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.drill-text-label {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.drill-text {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: #f7f9fc;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: #374151;
+}
+
+.drill-text :deep(mark) {
+  background: #fde68a;
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+  font-weight: 600;
 }
 
 .eval-actions {

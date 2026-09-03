@@ -24,7 +24,7 @@ print(f"语料长度: {len(text)} 字, 开头: {text[:50]!r}")
 llm = LLMClient({"model": ReadConfig().read_config("model")})
 rep = QualityReport()
 
-from api.extraction import _llm_call_with_retry, _parse_nodes, _parse_relations
+from core.extraction_service import _llm_call_with_retry, _parse_nodes, _parse_relations
 t0 = time.time()
 node_json, tok1 = _llm_call_with_retry(llm, build_node_messages(text=text))
 entities, anchors, alias_map, doc_time = _parse_nodes(node_json, text, rep)

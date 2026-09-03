@@ -8,7 +8,7 @@
   2. LLM-as-Judge（每指标 1 次 LLM 调用，抽样或全量判定，sampleSize<=0 为全量）：
      - 三元组忠实度  tripleFaithfulness    关系是否被原文明确支持
      - 谓词合理性    predicateReasonableness 谓词是否恰当、方向是否正确
-     - 双时态正确性  bitemporalCorrectness   status/vt 标注是否符合原文语义
+     - 双时态正确性  bitemporalCorrectness   vt_from/vt_to 标注是否符合原文语义
      - 证据句有效性  evidenceValidity        evidenceSpans 切片是否支撑三元组
      - 实体边界正确性 entityCorrectness      实体名称是否完整、类型是否匹配
 
@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from api.extraction import _extract_json
+from core.extraction_service import _extract_json
 from core.llm_client import LLMClient
 from utils.db.mysql_client import MysqlClient
 
@@ -117,12 +117,12 @@ _CRITERIA_PREDICATE = (
 )
 
 _CRITERIA_BITEMPORAL = (
-    "逐条判断双时态标注是否符合原文语义：\n"
-    "a) status=CURRENT 表示原文表明关系当前有效；\n"
-    "b) status=EXPIRED 表示原文表明关系已结束（如「曾任」「已卸任」）；\n"
-    "c) status=NEGATED 表示原文明确否认该关系（如「传闻不实」「予以否认」）；\n"
-    "d) vt_from/vt_to 时间区间若给出，应与原文时间表述一致；\n"
-    "e) 原文无任何时间/时态信息且标注 CURRENT 的，默认通过。"
+    "逐条判断时间有效性标注（vt_from / vt_to）是否符合原文语义：\n"
+    "a) vt_to 为空表示关系持续有效（原文无终止表述）；\n"
+    "b) vt_to 有值表示原文明确给出关系终止（如「曾任」「已卸任」「于X年终止」）；\n"
+    "c) vt_from/vt_to 时间区间若给出，应与原文时间表述一致；\n"
+    "d) 谓词为否定表述（如「并无冲突」「未发生」）且原文确有否认的，时间标注按否定语境判断；\n"
+    "e) 原文无任何时间信息且 vt_from/vt_to 均为空的，默认通过。"
 )
 
 _CRITERIA_EVIDENCE = (
@@ -151,6 +151,9 @@ def _judge(llm_client: LLMClient, metric_label: str, criteria: str,
            text: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
     """G-Eval 风格单维度裁判：criteria 注入 + 逐条判定 + 严格 JSON 输出。
 
+    三级判定：verdict 2=完全满足 / 1=部分满足（轻微偏差）/ 0=不满足或错误。
+    score = Σverdict / (2n)，部分正确的样本贡献 0.5 分，避免二值判定的信息损失。
+
     返回 {score: 0-1 或 None, reason: 整体结论, details: 每条样本判定, tokens}。
     """
     system = (
@@ -166,8 +169,11 @@ def _judge(llm_client: LLMClient, metric_label: str, criteria: str,
         "## 输出要求\n"
         "请逐步推理每条样本（不要输出推理过程），严格只输出如下 JSON，"
         "不要任何解释或多余文本：\n"
-        '{"items": [{"id": <样本id>, "pass": true或false, "reason": "<不超过40字的判定理由>"}], '
-        '"summary": "<不超过80字的整体质量结论>"}'
+        '{"items": [{"id": <样本id>, "verdict": 0或1或2, "reason": "<不超过40字的判定理由>"}], '
+        '"summary": "<不超过80字的整体质量结论>"}\n'
+        "verdict 判定标准：2=完全满足评估标准；"
+        "1=部分满足（存在轻微偏差，如关系方向正确但谓词粒度宽泛、实体边界轻微不精确、"
+        "时间区间部分吻合等）；0=不满足评估标准或错误。"
     )
     content, tokens = llm_client.chat(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -183,20 +189,26 @@ def _judge(llm_client: LLMClient, metric_label: str, criteria: str,
             except (TypeError, ValueError):
                 continue
 
-    passed = 0
+    total_verdict = 0
     details: List[Dict[str, Any]] = []
     for it in items:
         v = verdicts.get(int(it["id"])) or {}
-        ok = bool(v.get("pass"))
-        if ok:
-            passed += 1
+        # verdict 解析：优先三级判定；兼容旧版 pass 布尔（true→2 / false→0）；漏判保守取 0
+        try:
+            verdict = int(v.get("verdict"))
+            if verdict not in (0, 1, 2):
+                verdict = 2 if v.get("pass") else 0
+        except (TypeError, ValueError):
+            verdict = 2 if v.get("pass") else 0
+        total_verdict += verdict
         detail = {k: it[k] for k in it if k != "id"}
-        detail["pass"] = ok
+        detail["verdict"] = verdict
+        detail["pass"] = verdict == 2
         detail["reason"] = str(v.get("reason") or "")
         details.append(detail)
 
     return {
-        "score": round(passed / len(items), 4) if items else None,
+        "score": round(total_verdict / (2 * len(items)), 4) if items else None,
         "reason": str(data.get("summary") or ""),
         "details": details,
         "tokens": tokens,
@@ -231,11 +243,26 @@ def _evidence_text(text: str, r: Dict[str, Any]) -> str:
 
 
 # ============================================================================
-# 主 API /api/evaluate
+# 主流程：事件 generator（同步 evaluate 与 SSE stream 共用）
 # ============================================================================
-@router.post("/api/evaluate")
-def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
+def _validate_eval(req: EvaluationRequest) -> str:
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="待评估原文为空")
+    if not req.entities and not req.relations:
+        raise HTTPException(status_code=400, detail="抽取结果为空，无法评估")
+    return text
+
+
+def _evaluate_events(req: EvaluationRequest, request: Request):
+    """评估主流程 generator：逐指标产出 (event, data) 事件。
+
+    事件序列：intrinsic → metric（每选中指标一个）→ done。
+    SSE 端点逐事件推送（前端实时出分），同步端点聚合为完整报告。
+    """
     llm_client: LLMClient = request.app.state.llm_client
+    # 裁判模型标识：记录实际使用的模型（显示名 + model_name），随报告返回
+    judge_model_name = getattr(llm_client, "model_name", "") or "default"
     # 裁判模型可指定（llm_model 表 id）：动态构造，无效则回退服务默认配置
     if req.llmModelId:
         try:
@@ -250,16 +277,12 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
                         "max_retries": 1,
                     }
                 })
+                judge_model_name = f"{row.get('display_name') or row['model_name']} ({row['model_name']})"
         except Exception:
             import traceback
             traceback.print_exc()
 
     text = (req.text or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="待评估原文为空")
-    if not req.entities and not req.relations:
-        raise HTTPException(status_code=400, detail="抽取结果为空，无法评估")
-
     t0 = time.time()
     total_tokens = 0
     # sampleSize：正数 = 抽样条数；0 或负数 = 全量评估
@@ -274,11 +297,16 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
 
     # ---- 层次1：内在指标（全量，0 次 LLM）----
     intrinsic = _compute_intrinsic(text, req.entities, req.relations)
+    yield "intrinsic", intrinsic
 
-    # ---- 层次2：LLM-as-Judge（抽样，每指标 1 次 LLM 调用）----
+    # ---- 层次2：LLM-as-Judge（抽样，每指标 1 次 LLM 调用，算完即推送）----
     rel_sample = _sample(req.relations, sample_n)
     ent_sample = _sample(req.entities, sample_n)
     judge: Dict[str, Dict[str, Any]] = {}
+
+    def _emit_metric(key: str, label: str, m: Dict[str, Any]):
+        judge[key] = m
+        return ("metric", {"key": key, "label": label, "data": m})
 
     if rel_sample:
         # 关系级基础样本（忠实度 / 谓词合理性共用）
@@ -293,27 +321,26 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
         ]
         if "tripleFaithfulness" in selected:
             m = _judge_safe(llm_client, "三元组忠实度", _CRITERIA_FAITH, text, base_items)
-            judge["tripleFaithfulness"] = m
             total_tokens += m["tokens"]
+            yield _emit_metric("tripleFaithfulness", "三元组忠实度", m)
 
         if "predicateReasonableness" in selected:
             m = _judge_safe(llm_client, "谓词合理性", _CRITERIA_PREDICATE, text, base_items)
-            judge["predicateReasonableness"] = m
             total_tokens += m["tokens"]
+            yield _emit_metric("predicateReasonableness", "谓词合理性", m)
 
-        # 双时态标注（附加 status / vt 字段）
+        # 双时态标注（附加 vt 字段）
         if "bitemporalCorrectness" in selected:
             bi_items = []
             for i, r in enumerate(rel_sample):
                 bi_items.append({
                     **base_items[i],
-                    "status": r.get("status"),
                     "vt_from": r.get("vt_from"),
                     "vt_to": r.get("vt_to"),
                 })
             m = _judge_safe(llm_client, "双时态标注正确性", _CRITERIA_BITEMPORAL, text, bi_items)
-            judge["bitemporalCorrectness"] = m
             total_tokens += m["tokens"]
+            yield _emit_metric("bitemporalCorrectness", "双时态标注正确性", m)
 
         # 证据句有效性（仅有证据片段的关系）
         if "evidenceValidity" in selected:
@@ -329,8 +356,8 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
                         "evidence": ev,
                     })
             m = _judge_safe(llm_client, "证据句有效性", _CRITERIA_EVIDENCE, text, ev_items)
-            judge["evidenceValidity"] = m
             total_tokens += m["tokens"]
+            yield _emit_metric("evidenceValidity", "证据句有效性", m)
     elif req.entities:
         # 有实体但无关系：选中的关系级指标按缺失计 0 分，避免综合得分虚高
         _missing = {
@@ -341,12 +368,13 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
         }
         for key, label in _missing.items():
             if key in selected:
-                judge[key] = {
+                m = {
                     "score": 0.0,
                     "reason": f"抽取结果无任何关系，{label}按缺失计 0 分（实体孤立率 100%，图谱无结构）",
                     "details": [],
                     "tokens": 0,
                 }
+                yield _emit_metric(key, label, m)
 
     if ent_sample and "entityCorrectness" in selected:
         ent_items = [
@@ -354,19 +382,59 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
             for i, e in enumerate(ent_sample)
         ]
         m = _judge_safe(llm_client, "实体边界正确性", _CRITERIA_ENTITY, text, ent_items)
-        judge["entityCorrectness"] = m
         total_tokens += m["tokens"]
+        yield _emit_metric("entityCorrectness", "实体边界正确性", m)
 
     # ---- 综合得分：选中且已出分指标的均值 ----
     scores = [v["score"] for v in judge.values() if v.get("score") is not None]
     overall = round(sum(scores) / len(scores), 4) if scores else None
 
-    return {
-        "intrinsic": intrinsic,
-        "llmJudge": judge,
+    yield "done", {
         "overall": overall,
         "sampledRelations": len(rel_sample),
         "sampledEntities": len(ent_sample),
         "tokenConsumed": total_tokens,
         "duration": int((time.time() - t0) * 1000),
+        "judgeModel": judge_model_name,
     }
+
+
+@router.post("/api/evaluate")
+def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
+    _validate_eval(req)
+    result: Dict[str, Any] = {}
+    judge: Dict[str, Dict[str, Any]] = {}
+    for event, data in _evaluate_events(req, request):
+        if event == "intrinsic":
+            result["intrinsic"] = data
+        elif event == "metric":
+            judge[data["key"]] = data["data"]
+        elif event == "done":
+            result.update(data)
+    result["llmJudge"] = judge
+    return result
+
+
+@router.post("/api/evaluate/stream")
+def evaluate_stream(req: EvaluationRequest, request: Request):
+    """SSE 流式评估：逐指标实时推送（intrinsic → metric* → done）。
+
+    事件格式：event: <name>\ndata: <json>\n\n
+    """
+    _validate_eval(req)
+
+    def gen():
+        try:
+            for event, data in _evaluate_events(req, request):
+                yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        except HTTPException as e:
+            yield f"event: error\ndata: {json.dumps({'message': str(e.detail)}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"event: error\ndata: {json.dumps({'message': str(e)[:200]}, ensure_ascii=False)}\n\n"
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

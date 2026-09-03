@@ -195,14 +195,11 @@ def _iso_cmp(a: Optional[str], b: Optional[str]) -> Optional[int]:
 def validate_w2_temporal(payload: LlmExtractionPayload, rep: QualityReport) -> None:
     # 关系 vt_from <= vt_to
     for i, r in enumerate(list(payload.relations)):
-        if r.status == "NEGATED":
-            # 否定关系只看有没 vt 就不强行对齐，避免误删
-            pass
         cmp_v = _iso_cmp(r.vt_from, r.vt_to)
         if cmp_v is not None and cmp_v > 0:
             rep.add("WARNING", "W2_RELATION_VT_INVERTED",
                     f"关系 ({r.subject},{r.predicate},{r.object}) vt_from={r.vt_from} > vt_to={r.vt_to}，"
-                    "已交换两端，同时标 EXPIRED 失败原因待确认",
+                    "已交换两端",
                     relation_idx=i)
             r.vt_from, r.vt_to = r.vt_to, r.vt_from
             r.vt_precision_from, r.vt_precision_to = r.vt_precision_to, r.vt_precision_from
@@ -306,7 +303,7 @@ def validate_w3_entity_dedup(payload: LlmExtractionPayload, rep: QualityReport) 
 #   或紧邻的时间锚点推断出事件时间，按时间 ISO 升序排队。
 #   对时间顺序上相邻、且原文出现位置也相邻（跨度不超过全文 30%）的两个事件，
 #   自动补一条 predicate="随后发生"/"紧随" 的 [:RELATION] 承接边，
-#   confidence=0.55，source=post_hoc_temporal_chaining，status=CURRENT。
+#   confidence=0.55，source=post_hoc_temporal_chaining。
 # 目的：消灭事件孤立点，提升网络连通性。
 # ============================================================================
 def _event_vt_from_relations(event_name: str, payload: LlmExtractionPayload) -> Optional[str]:
@@ -393,7 +390,6 @@ def validate_w35_temporal_event_chaining(
             vt_to=vt_to,
             vt_precision_from="day" if vt_from else "unknown",
             vt_precision_to="day" if vt_to else "unknown",
-            status="CURRENT",
             confidence=0.55,
             evidenceSpans=[EvidenceSpan(start=0, end=0)],
         ))
@@ -525,7 +521,6 @@ def validate_w36_isolated_static_entity_patch(
             vt_to=None,
             vt_precision_from="unknown",
             vt_precision_to="unknown",
-            status="CURRENT",
             confidence=0.50,
             evidenceSpans=[EvidenceSpan(start=0, end=0)],
         ))

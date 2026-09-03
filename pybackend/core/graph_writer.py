@@ -112,7 +112,7 @@ class GraphWriter:
     # 新接口：基于 LLM 抽取结果的双时态 + 因果写入（借鉴 Semantica A-Box 分层）
     #   - 实体：MERGE（canonicalName + type + modelId 唯一），追加 mentions/spans 到列表属性
     #   - 关系：CREATE（**不再 MERGE 关系**），避免覆盖掉前任期时态版本
-    #           写库时带上 vt / evidence / status / confidence 全部字段
+    #           写库时带上 vt / evidence / confidence 全部字段
     #   - 因果：CREATE [:CAUSES]，独立关系类型，不混在普通 RELATION
     # ------------------------------------------------------------------------
     def write_llm_extracted(
@@ -245,8 +245,6 @@ class GraphWriter:
                         vt_to: coalesce($vt, ''),
                         vt_precision_from: coalesce($vpf, 'unknown'),
                         vt_precision_to: coalesce($vpt, 'unknown'),
-                        status: $status,
-                        negated: CASE WHEN $status = 'NEGATED' THEN true ELSE false END,
                         confidence: $conf,
                         lowConfidence: $lowConf,
                         evidence: $evidence,
@@ -259,7 +257,6 @@ class GraphWriter:
                     st=r.subjectType, ot=r.objectType,
                     vf=r.vt_from, vt=r.vt_to,
                     vpf=r.vt_precision_from, vpt=r.vt_precision_to,
-                    status=r.status,
                     conf=float(r.confidence),
                     lowConf=low_conf,
                     evidence=evidence,

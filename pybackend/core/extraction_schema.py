@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field, validator
 # ============================================================================
 # 基础类型常量 + 治理阈值（全链路唯一源，extraction_validator 和 graph_writer 都从此读取）
 # ============================================================================
-REL_STATUS = Literal["CURRENT", "EXPIRED", "NEGATED"]
 CAUSE_DIR = Literal["FORWARD", "PREVENT"]
 ANCHOR_TYPE = Literal["DATE", "DATERANGE", "RELATIVE", "NOW", "OPEN", "UNKNOWN"]
 PRECISION = Literal["day", "month", "quarter", "year", "decade", "unknown"]
@@ -103,14 +102,6 @@ class ExtractedRelation(BaseModel):
     )
     vt_precision_from: PRECISION = "unknown"
     vt_precision_to: PRECISION = "unknown"
-    status: REL_STATUS = Field(
-        "CURRENT",
-        description=(
-            "CURRENT=当前仍生效（默认，未提及时）；EXPIRED=曾经生效，现在已失效（曾任/已离职）；"
-            "NEGATED=原文明确否定（不再担任、并非），关系并不为真但作为反事实证据保留。"
-            "NEGATED 关系入库时单独标记不参与正向推理。"
-        ),
-    )
     confidence: float = Field(..., ge=0.0, le=1.0, description="断言置信度，LLM 自估")
     evidenceSpans: List[EvidenceSpan] = Field(
         ..., min_length=1, description="至少 1 处原文证据 span。没有证据的断言 LLM 应直接不输出。"
