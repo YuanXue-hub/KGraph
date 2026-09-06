@@ -15,11 +15,13 @@ CREATE TABLE IF NOT EXISTS llm_model (
     enabled     TINYINT      DEFAULT 1 COMMENT '是否启用: 0-否 1-是',
     sort_order  INT          DEFAULT 0 COMMENT '前端展示排序',
     userId      BIGINT       NULL COMMENT '所属用户ID（预留，模型管理用）',
-    isDeleted   TINYINT(1)   DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    isDeleted   BIGINT       DEFAULT 0 COMMENT '逻辑删除: 0-未删除; 非0-已删除(存记录id，保证唯一键可共存)',
     create_time DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_model (provider, model_name)
+    -- 唯一键含 isDeleted：活跃记录(isDeleted=0)同 provider+model_name 仅一条；
+    -- 已删除记录 isDeleted=记录id，允许多条同 provider+model_name 的删除记录共存
+    UNIQUE KEY uk_model (provider, model_name, isDeleted)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_unicode_ci COMMENT ='LLM模型配置';

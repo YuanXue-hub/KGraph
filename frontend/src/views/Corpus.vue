@@ -73,29 +73,39 @@
               <span class="time-cell">{{ formatTime(row.createTime) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="260" align="center" fixed="right">
+          <el-table-column label="操作" width="330" align="center" fixed="right">
             <template #default="{ row }">
               <el-button
                 v-if="row.status === 1 || row.source !== 'file'"
                 size="small"
                 @click="viewContent(row)"
-              >查看</el-button>
+                >查看</el-button
+              >
               <el-button
                 v-if="row.status === 2"
                 size="small"
                 type="warning"
                 @click="handleReparse(row)"
-              >重新解析</el-button>
+                >重新解析</el-button
+              >
+              <el-button
+                v-if="row.status === 1 || row.source !== 'file'"
+                size="small"
+                @click="handleChunk(row)"
+                >分块</el-button
+              >
               <el-button
                 v-if="row.status === 1 || row.source !== 'file'"
                 size="small"
                 @click="openEdit(row)"
-              >编辑</el-button>
+                >编辑</el-button
+              >
               <el-button
                 size="small"
                 type="danger"
                 @click="handleDelete(row)"
-              >删除</el-button>
+                >删除</el-button
+              >
             </template>
           </el-table-column>
 
@@ -216,6 +226,25 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 分块设置对话框 -->
+    <CorpusChunkDialog
+      v-model="chunkDialogVisible"
+      :corpus-id="chunkTarget?.id || 0"
+      :corpus-title="chunkTarget?.title"
+      :existing-count="chunkTarget?.chunkCount || 0"
+      :prefill="chunkPrefill"
+      @done="onChunkDone"
+    />
+
+    <!-- 分块结果抽屉 -->
+    <CorpusChunkDrawer
+      v-model="chunkDrawerVisible"
+      :corpus-id="chunkTarget?.id || 0"
+      :corpus-title="chunkTarget?.title"
+      @rechunk="onRechunk"
+      @cleared="loadList"
+    />
   </div>
 </template>
 
@@ -227,6 +256,8 @@ import {
   Document, EditPen, Upload, UploadFilled, Tickets, Loading, WarningFilled
 } from '@element-plus/icons-vue'
 import { projectApi, corpusApi } from '@/api'
+import CorpusChunkDialog from '@/components/corpus/CorpusChunkDialog.vue'
+import CorpusChunkDrawer from '@/components/corpus/CorpusChunkDrawer.vue'
 
 interface Project { id: number; projectName: string }
 interface Corpus {
@@ -239,6 +270,7 @@ interface Corpus {
   status?: number
   errorMsg?: string
   createTime: string
+  chunkCount?: number
 }
 
 const projects = ref<Project[]>([])
@@ -261,6 +293,12 @@ const inputMode = ref<'text' | 'file'>('text')
 const selectedFile = ref<File | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+/* ---- 分块相关状态 ---- */
+const chunkDialogVisible = ref(false)
+const chunkDrawerVisible = ref(false)
+const chunkTarget = ref<Corpus | null>(null)
+const chunkPrefill = ref<{ strategy: string; chunkSize?: number; overlap?: number; separator?: string } | null>(null)
 
 const form = ref({
   id: 0,
@@ -299,7 +337,10 @@ async function loadList() {
       pageNum: pageNum.value,
       pageSize: pageSize.value
     })
-    list.value = res.data?.records || res.data || []
+    list.value = (res.data?.records || res.data || []).map((r: Corpus) => ({
+      ...r,
+      chunkCount: Number(r.chunkCount) || 0
+    }))
     total.value = Number(res.data?.total) || list.value.length
     // 如果有处理中的语料，启动轮询
     checkPolling()
@@ -404,8 +445,14 @@ async function handleSubmit() {
   submitting.value = true
   try {
     if (isEdit.value) {
+      // 记录编辑前是否有分块（后端已自动清空，此处用于提示用户重新分块）
+      const row = list.value.find((i) => i.id === form.value.id)
+      const hadChunks = (row?.chunkCount || 0) > 0
       await corpusApi.update({ id: form.value.id, title: form.value.title, content: form.value.content })
       ElMessage.success('编辑成功')
+      if (hadChunks) {
+        ElMessage.warning('内容已更新，原有分块已清除，请重新分块')
+      }
     } else {
       await corpusApi.add({
         projectId: form.value.projectId!,
@@ -450,6 +497,31 @@ function viewContent(row: Corpus) {
     currentRow.value = row
     viewDialog.value = true
   }
+}
+
+/* ---- 分块交互 ---- */
+
+/** 操作栏「分块」入口：已分块 → 结果抽屉；未分块 → 设置对话框 */
+function handleChunk(row: Corpus) {
+  chunkTarget.value = row
+  chunkPrefill.value = null
+  if ((row.chunkCount || 0) > 0) {
+    chunkDrawerVisible.value = true
+  } else {
+    chunkDialogVisible.value = true
+  }
+}
+
+/** 分块执行完成：刷新列表（更新 chunkCount）并打开结果抽屉 */
+function onChunkDone() {
+  loadList()
+  chunkDrawerVisible.value = true
+}
+
+/** 抽屉「重新分块」：回填参数快照打开对话框 */
+function onRechunk(prefill: { strategy: string; chunkSize?: number; overlap?: number; separator?: string }) {
+  chunkPrefill.value = prefill
+  chunkDialogVisible.value = true
 }
 
 /**

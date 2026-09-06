@@ -4,12 +4,8 @@ import com.yuan.seedboot.model.entity.RequestLog;
 import com.baomidou.mybatisplus.extension.service.IService;
 
 import java.util.List;
+import java.util.Map;
 
-/**
-* @author Yuan
-* @description 针对表【request_log(请求日志)】的数据库操作Service
-* @createDate 2026-06-13 22:41:01
-*/
 public interface RequestLogService extends IService<RequestLog> {
     /**
      * 记录请求日志
@@ -27,5 +23,15 @@ public interface RequestLogService extends IService<RequestLog> {
      * 统计用户的 Token 消耗
      */
     Long countUserTokens(Long userId);
+
+    /**
+     * 查询用户最近 N 天的用量统计（按天聚合：调用次数、Token 消耗）
+     */
+    List<Map<String, Object>> getDailyUsage(Long userId, Integer days);
+
+    /**
+     * 查询用户各模型的用量统计（按模型聚合）
+     */
+    List<Map<String, Object>> getModelUsage(Long userId);
 }
 

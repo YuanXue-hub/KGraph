@@ -123,6 +123,101 @@ class MysqlClient:
             )
             return cursor.fetchone()
 
+    def get_llm_models_for_user(self, user_id: int, enabled_only: bool = False) -> List[Dict]:
+        """查询用户自己的 LLM 模型（userId 匹配），用户间严格隔离，无共享模型。"""
+        self._ensure_connection()
+        sql = (
+            "SELECT id, provider, model_name, display_name, base_url, api_key, "
+            "is_reasoner, temperature, enabled, sort_order, userId FROM llm_model "
+            "WHERE isDeleted = 0 AND userId = %s"
+        )
+        if enabled_only:
+            sql += " AND enabled = 1"
+        sql += " ORDER BY sort_order ASC, id ASC"
+        with self.connection.cursor() as cursor:
+            cursor.execute(sql, (user_id,))
+            return cursor.fetchall() or []
+
+    def create_llm_model(self, data: Dict) -> int:
+        """新增 LLM 模型配置（归属指定用户）。"""
+        self._ensure_connection()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO llm_model (provider, model_name, display_name, base_url, api_key, "
+                "is_reasoner, temperature, enabled, sort_order, userId) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    data["provider"], data["model_name"], data["display_name"],
+                    data["base_url"], data["api_key"],
+                    1 if data.get("is_reasoner") else 0,
+                    float(data.get("temperature") or 0.3),
+                    1 if data.get("enabled", 1) else 0,
+                    int(data.get("sort_order") or 0),
+                    data.get("user_id"),
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def update_llm_model(self, model_id: int, user_id: int, data: Dict) -> int:
+        """更新模型配置（仅属主可改；api_key 为空/缺省表示不修改）。"""
+        self._ensure_connection()
+        sets, params = [], []
+        for col, key in (("provider", "provider"), ("model_name", "model_name"),
+                         ("display_name", "display_name"), ("base_url", "base_url")):
+            if data.get(key) is not None:
+                sets.append(f"{col} = %s")
+                params.append(data[key])
+        if data.get("api_key"):  # 留空 = 保持原 key
+            sets.append("api_key = %s")
+            params.append(data["api_key"])
+        if data.get("is_reasoner") is not None:
+            sets.append("is_reasoner = %s")
+            params.append(1 if data["is_reasoner"] else 0)
+        if data.get("enabled") is not None:
+            sets.append("enabled = %s")
+            params.append(1 if data["enabled"] else 0)
+        if not sets:
+            return 0
+        params.extend([model_id, user_id])
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE llm_model SET {', '.join(sets)} "
+                "WHERE id = %s AND userId = %s AND isDeleted = 0",
+                tuple(params),
+            )
+            return cursor.rowcount
+
+    def delete_llm_model(self, model_id: int, user_id: int) -> int:
+        """逻辑删除模型配置（仅属主可删）。
+
+        isDeleted 设为记录 id（而非 1），使唯一键 (provider, model_name, isDeleted)
+        允许多条同 provider+model_name 的已删除记录共存（活跃记录 isDeleted=0 唯一）。
+        """
+        self._ensure_connection()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE llm_model SET isDeleted = id WHERE id = %s AND userId = %s AND isDeleted = 0",
+                (model_id, user_id),
+            )
+            return cursor.rowcount
+
+    def log_request(self, user_id, model_name: str, prompt_tokens: int = 0,
+                    completion_tokens: int = 0, total_tokens: int = 0,
+                    duration: int = 0, status: str = "success",
+                    error_message: str = "") -> int:
+        """记录一次 LLM 调用到 request_log 表（供用量统计）。"""
+        self._ensure_connection()
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO request_log (userId, modelName, promptTokens, "
+                "completionTokens, totalTokens, duration, status, errorMessage) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (user_id, model_name, prompt_tokens, completion_tokens,
+                 total_tokens, duration, status, error_message),
+            )
+            return int(cursor.lastrowid)
+
+
     def get_session_messages(self, session_id: str) -> List[Dict[str, str]]:
         """获取会话的完整消息列表（供前端展示历史对话）。"""
         self._ensure_connection()

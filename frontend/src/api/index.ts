@@ -323,6 +323,39 @@ export const relationNeo4jApi = {
 }
 
 /* ============ 语料 ============ */
+export interface CorpusChunkParams {
+  strategy: string
+  chunkSize?: number
+  overlap?: number
+  separator?: string
+}
+
+export interface CorpusChunkItem {
+  id?: number
+  corpusId?: number
+  chunkIndex: number
+  content: string
+  startOffset: number
+  endOffset: number
+  charCount: number
+  strategy?: string
+  chunkSize?: number
+  overlap?: number
+  customSeparator?: string
+  createTime?: string
+}
+
+export interface CorpusChunkStats {
+  strategy: string
+  chunkSize: number
+  overlap: number
+  separator?: string
+  totalChunks: number
+  avgCharCount: number
+  duration: number
+  previewChunks?: CorpusChunkItem[]
+}
+
 export const corpusApi = {
   add(data: { projectId: number; title: string; content: string }) {
     return request({ url: '/corpus/add', method: 'post', data })
@@ -353,6 +386,19 @@ export const corpusApi = {
   },
   get(id: number) {
     return request({ url: '/corpus/get', method: 'get', params: { id } })
+  },
+  /* ---- 语料分块 ---- */
+  chunkPreview(id: number | string, data: CorpusChunkParams) {
+    return request({ url: `/corpus/${id}/chunks/preview`, method: 'post', data, timeout: 120000 })
+  },
+  chunkCorpus(id: number | string, data: CorpusChunkParams) {
+    return request({ url: `/corpus/${id}/chunks`, method: 'post', data, timeout: 120000 })
+  },
+  pageChunks(id: number | string, params: { pageNum: number; pageSize: number }) {
+    return request({ url: `/corpus/${id}/chunks`, method: 'get', params })
+  },
+  clearChunks(id: number | string) {
+    return request({ url: `/corpus/${id}/chunks`, method: 'delete' })
   }
 }
 
@@ -562,6 +608,106 @@ export const chatApi = {
       timeout: 120_000,
     })
   },
+}
+
+/* ============ 平台管理：模型管理 ============ */
+/* 说明：Java 端 /v1/chat/llm-* 接口直接透传 Python 结果，无 { code, data } 统一包装，
+   因此走原生 fetch（同 Chat.vue 模式），不走 axios 拦截器。 */
+export interface LlmProvider {
+  key: string
+  label: string
+  baseUrl: string
+  apiKeyRequired: boolean
+}
+
+export interface LlmModelManageRow {
+  id: number
+  provider: string
+  modelName: string
+  displayName: string
+  baseUrl: string
+  apiKeyMasked: string
+  hasKey: boolean
+  isReasoner: boolean
+  enabled: boolean
+}
+
+export interface LlmModelPayload {
+  provider: string
+  modelName: string
+  displayName: string
+  baseUrl: string
+  apiKey?: string
+  isReasoner: boolean
+  enabled: boolean
+}
+
+async function llmFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  })
+  const json = await res.json().catch(() => null)
+  if (!res.ok) {
+    const msg = (json as any)?.detail || (json as any)?.message || `请求失败（HTTP ${res.status}）`
+    throw new Error(msg)
+  }
+  // Java 全局异常处理器可能将 Python 错误包装为 { code, message }（HTTP 200）
+  if (json && typeof json === 'object' && !Array.isArray(json) && 'code' in json && (json as any).code !== 0) {
+    throw new Error((json as any).message || '请求失败')
+  }
+  return json as T
+}
+
+export const llmModelApi = {
+  providers() {
+    return llmFetch<LlmProvider[]>('/api/v1/chat/llm-providers')
+  },
+  list() {
+    return llmFetch<LlmModelManageRow[]>('/api/v1/chat/llm-models/manage')
+  },
+  create(data: LlmModelPayload) {
+    return llmFetch<{ id: number; message: string }>('/api/v1/chat/llm-models/manage', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+  update(id: number, data: LlmModelPayload) {
+    return llmFetch<{ message: string }>(`/api/v1/chat/llm-models/manage/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+  remove(id: number) {
+    return llmFetch<{ message: string }>(`/api/v1/chat/llm-models/manage/${id}`, {
+      method: 'DELETE',
+    })
+  },
+  usage(days: number = 7) {
+    return llmFetch<LlmUsageData>(`/api/v1/chat/usage?days=${days}`)
+  },
+}
+
+export interface LlmUsageDaily {
+  date: string
+  callCount: number
+  totalTokens: number
+  avgDuration: number
+}
+
+export interface LlmUsageByModel {
+  modelName: string
+  callCount: number
+  totalTokens: number
+  avgDuration: number
+}
+
+export interface LlmUsageData {
+  totalCalls: number
+  totalTokens: number
+  daily: LlmUsageDaily[]
+  byModel: LlmUsageByModel[]
 }
 
 export type { ApiResponse }

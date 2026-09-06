@@ -7,10 +7,14 @@ import com.yuan.seedboot.common.ResultUtils;
 import com.yuan.seedboot.exception.ErrorCode;
 import com.yuan.seedboot.exception.ThrowUtils;
 import com.yuan.seedboot.model.entity.Corpus;
+import com.yuan.seedboot.model.entity.CorpusChunk;
 import com.yuan.seedboot.model.entity.User;
+import com.yuan.seedboot.model.request.ChunkCorpusRequest;
 import com.yuan.seedboot.model.request.CorpusAddRequest;
 import com.yuan.seedboot.model.request.CorpusQueryRequest;
 import com.yuan.seedboot.model.request.CorpusUpdateRequest;
+import com.yuan.seedboot.model.vo.CorpusChunkStatsVO;
+import com.yuan.seedboot.service.CorpusChunkService;
 import com.yuan.seedboot.service.CorpusService;
 import com.yuan.seedboot.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -28,6 +32,9 @@ public class CorpusController {
 
     @Resource
     private CorpusService corpusService;
+
+    @Resource
+    private CorpusChunkService corpusChunkService;
 
     @Resource
     private UserService userService;
@@ -89,8 +96,44 @@ public class CorpusController {
     @Operation(summary = "语料详情")
     public BaseResponse<Corpus> getCorpus(long id) {
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
-        Corpus corpus = corpusService.getById(id);
+        Corpus corpus = this.corpusService.getById(id);
         ThrowUtils.throwIf(corpus == null, ErrorCode.NOT_FOUND_ERROR);
         return ResultUtils.success(corpus);
+    }
+
+    // ==================== 语料分块 ====================
+
+    @PostMapping("/{id}/chunks/preview")
+    @Operation(summary = "分块预览（dry-run 不落库，返回统计 + 前 10 块）")
+    public BaseResponse<CorpusChunkStatsVO> previewChunks(@PathVariable("id") long id,
+                                                          @RequestBody ChunkCorpusRequest request) {
+        ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
+        return ResultUtils.success(this.corpusChunkService.previewChunks(id, request));
+    }
+
+    @PostMapping("/{id}/chunks")
+    @Operation(summary = "执行分块（覆盖式重建落库）")
+    public BaseResponse<CorpusChunkStatsVO> chunkCorpus(@PathVariable("id") long id,
+                                                        @RequestBody ChunkCorpusRequest request,
+                                                        HttpServletRequest httpRequest) {
+        ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
+        User loginUser = this.userService.getLoginUser(httpRequest);
+        return ResultUtils.success(this.corpusChunkService.chunkCorpus(id, request, loginUser.getId()));
+    }
+
+    @GetMapping("/{id}/chunks")
+    @Operation(summary = "分页查看分块结果")
+    public BaseResponse<Page<CorpusChunk>> listChunks(@PathVariable("id") long id,
+                                                      @RequestParam(defaultValue = "1") long pageNum,
+                                                      @RequestParam(defaultValue = "20") long pageSize) {
+        ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
+        return ResultUtils.success(this.corpusChunkService.pageChunks(id, pageNum, pageSize));
+    }
+
+    @DeleteMapping("/{id}/chunks")
+    @Operation(summary = "清空语料分块")
+    public BaseResponse<Boolean> clearChunks(@PathVariable("id") long id) {
+        ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
+        return ResultUtils.success(this.corpusChunkService.clearChunks(id));
     }
 }

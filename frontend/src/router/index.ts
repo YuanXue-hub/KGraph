@@ -89,6 +89,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '角色管理' }
       },
       {
+        path: '/platform/llm-model',
+        name: 'LlmModelManage',
+        component: () => import('@/views/platform/LlmModelManage.vue'),
+        meta: { title: '模型管理' }
+      },
+      {
         path: '/platform/profile',
         name: 'Profile',
         component: () => import('@/views/platform/Profile.vue'),

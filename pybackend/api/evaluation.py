@@ -41,6 +41,7 @@ class EvaluationRequest(BaseModel):
     sampleSize: int = DEFAULT_SAMPLE  # 正数 = 抽样条数；0 = 全量判定
     llmModelId: Optional[int] = None  # 裁判模型（llm_model 表 id），不传用服务默认配置
     metrics: Optional[List[str]] = None  # 选中的裁判指标 key，空/None = 全部指标
+    userId: Optional[int] = None
 
 
 # ============================================================================
@@ -421,6 +422,7 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
     _validate_eval(req)
     result: Dict[str, Any] = {}
     judge: Dict[str, Dict[str, Any]] = {}
+    judge_model_name = ""
     for event, data in _evaluate_events(req, request):
         if event == "intrinsic":
             result["intrinsic"] = data
@@ -428,7 +430,20 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
             judge[data["key"]] = data["data"]
         elif event == "done":
             result.update(data)
+            judge_model_name = data.get("judgeModel", "")
     result["llmJudge"] = judge
+    # 记录 LLM 调用日志（供用量统计）
+    try:
+        from utils.db.mysql_client import MysqlClient
+        MysqlClient().log_request(
+            user_id=req.userId,
+            model_name=judge_model_name or "unknown",
+            total_tokens=result.get("tokenConsumed", 0),
+            duration=result.get("duration", 0),
+            status="success",
+        )
+    except Exception:
+        pass
     return result
 
 
@@ -441,13 +456,33 @@ def evaluate_stream(req: EvaluationRequest, request: Request):
     _validate_eval(req)
 
     def gen():
+        judge_model_name = ""
+        total_tokens = 0
+        duration = 0
         try:
             for event, data in _evaluate_events(req, request):
+                if event == "done":
+                    judge_model_name = data.get("judgeModel", "")
+                    total_tokens = data.get("tokenConsumed", 0)
+                    duration = data.get("duration", 0)
                 yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
         except HTTPException as e:
             yield f"event: error\ndata: {json.dumps({'message': str(e.detail)}, ensure_ascii=False)}\n\n"
         except Exception as e:
             yield f"event: error\ndata: {json.dumps({'message': str(e)[:200]}, ensure_ascii=False)}\n\n"
+        finally:
+            # 记录 LLM 调用日志（供用量统计）
+            try:
+                from utils.db.mysql_client import MysqlClient
+                MysqlClient().log_request(
+                    user_id=req.userId,
+                    model_name=judge_model_name or "unknown",
+                    total_tokens=total_tokens,
+                    duration=duration,
+                    status="success",
+                )
+            except Exception:
+                pass
 
     from fastapi.responses import StreamingResponse
     return StreamingResponse(

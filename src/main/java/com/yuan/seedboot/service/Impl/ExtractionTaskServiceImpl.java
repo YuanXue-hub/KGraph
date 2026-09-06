@@ -83,7 +83,7 @@ public class ExtractionTaskServiceImpl extends ServiceImpl<ExtractionTaskMapper,
         long startTs = System.currentTimeMillis();
         try {
             String mode = StrUtil.blankToDefault(request.getMode(), "zero_shot");
-            JSONObject resp = pythonServiceClient.extract(text, ontology, request.getModelId(), mode, request.getLlmModelId());
+            JSONObject resp = pythonServiceClient.extract(text, ontology, request.getModelId(), mode, request.getLlmModelId(), loginUser.getId());
 
             // 5. 填充结果
             task.setResult(resp.toString());

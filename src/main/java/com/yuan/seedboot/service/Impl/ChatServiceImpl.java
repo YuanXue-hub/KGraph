@@ -76,6 +76,82 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     @SuppressWarnings("unchecked")
+    public java.util.List<Map<String, Object>> listLlmModelsForUser(Long userId) {
+        String targetUrl = pythonServiceUrl + "/api/chat/llm-models?userId=" + userId;
+        return webClient.get()
+                .uri(targetUrl)
+                .retrieve()
+                .bodyToMono(java.util.List.class)
+                .timeout(Duration.ofSeconds(10))
+                .block();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public java.util.List<Map<String, Object>> listLlmProviders() {
+        String targetUrl = pythonServiceUrl + "/api/chat/llm-providers";
+        return webClient.get()
+                .uri(targetUrl)
+                .retrieve()
+                .bodyToMono(java.util.List.class)
+                .timeout(Duration.ofSeconds(10))
+                .block();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public java.util.List<Map<String, Object>> listLlmModelsManage(Long userId) {
+        String targetUrl = pythonServiceUrl + "/api/chat/llm-models/manage?userId=" + userId;
+        return webClient.get()
+                .uri(targetUrl)
+                .retrieve()
+                .bodyToMono(java.util.List.class)
+                .timeout(Duration.ofSeconds(10))
+                .block();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> createLlmModel(Long userId, Map<String, Object> body) {
+        body.put("userId", userId);
+        String targetUrl = pythonServiceUrl + "/api/chat/llm-models/manage";
+        return webClient.post()
+                .uri(targetUrl)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(10))
+                .block();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> updateLlmModel(Long userId, Long modelId, Map<String, Object> body) {
+        body.put("userId", userId);
+        String targetUrl = pythonServiceUrl + "/api/chat/llm-models/manage/" + modelId;
+        return webClient.put()
+                .uri(targetUrl)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(10))
+                .block();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> deleteLlmModel(Long userId, Long modelId) {
+        String targetUrl = pythonServiceUrl + "/api/chat/llm-models/manage/" + modelId + "?userId=" + userId;
+        return webClient.delete()
+                .uri(targetUrl)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(10))
+                .block();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
     public Map<String, Object> createSession() {
         String targetUrl = pythonServiceUrl + "/api/chat/session/create";
         return webClient.post()

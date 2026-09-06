@@ -394,7 +394,9 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
         base_url=model_cfg.get("base_url"),
         temperature=float(model_cfg.get("temperature", 0.3)),
         streaming=True,
+        stream_usage=True,
     )
+    chat_model_name = model_cfg.get("model_name", "deepseek-chat")
 
     agent = create_agent(
         model=llm,
@@ -431,6 +433,9 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
         skipped_large_answer: Optional[str] = None    # 超过阈值被暂存的回答内容（多段累积）
         # 累积完整 AI 回答文本，用于对话结束后保存到记忆
         full_answer_parts: list = []
+        # LLM 用量统计
+        chat_total_tokens = 0
+        chat_start_time = time.time()
 
         async for event in agent.astream_events(
             {"messages": agent_messages},
@@ -486,6 +491,13 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
             # 事件 content 是"本次增量"，多事件时各事件内容依次拼接。
             elif (kind == "on_chat_model_stream") or (kind == "on_chain_stream" and name == "model"):
                 raw_chunk = data.get("chunk") if "chunk" in data else data
+                # 捕获流式 token 用量（stream_usage=True 时最后一个 chunk 携带 usage_metadata）
+                try:
+                    chunk_usage = getattr(raw_chunk, "usage_metadata", None) or {}
+                    if chunk_usage:
+                        chat_total_tokens += int(chunk_usage.get("total_tokens", 0) or 0)
+                except Exception:
+                    pass
                 delta_text = _extract_content(raw_chunk)
                 if not delta_text:
                     continue
@@ -538,6 +550,16 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                         full_answer_parts.append(answer_delta)
                         yield _sse_event("answer", {"content": answer_delta})
 
+            # ── LLM 调用完成：累积 token 用量 ──
+            elif kind == "on_chat_model_end":
+                try:
+                    output = event.get("data", {}).get("output")
+                    usage = getattr(output, "usage_metadata", None) or {}
+                    if usage:
+                        chat_total_tokens += int(usage.get("total_tokens", 0) or 0)
+                except Exception:
+                    pass
+
             # ── Agent 最终完成（仅 LangGraph 根链） ──
             elif kind == "on_chain_end" and name == "LangGraph":
                 output = event.get("data", {}).get("output", {})
@@ -547,6 +569,13 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                         last_msg = messages[-1]
                         full_text = getattr(last_msg, "content", "") or ""
                         has_tool_calls = bool(getattr(last_msg, "tool_calls", None))
+                        # 兜底：从最终 AIMessage 的 usage_metadata 取 token 用量
+                        try:
+                            final_usage = getattr(last_msg, "usage_metadata", None) or {}
+                            if final_usage and chat_total_tokens == 0:
+                                chat_total_tokens = int(final_usage.get("total_tokens", 0) or 0)
+                        except Exception:
+                            pass
 
                         # 诊断日志：排查"无回答就停止"类问题的关键证据
                         logger.info(
@@ -599,6 +628,19 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
         yield _sse_event("error", {"message": str(e)})
         traceback.print_exc()
     finally:
+        # ── 记录 LLM 调用日志（供用量统计） ──
+        try:
+            chat_duration_ms = int((time.time() - chat_start_time) * 1000)
+            MysqlClient().log_request(
+                user_id=user_id,
+                model_name=chat_model_name,
+                total_tokens=chat_total_tokens,
+                duration=chat_duration_ms,
+                status="success",
+            )
+        except Exception:
+            pass
+
         # ── 保存 AI 回答到记忆 ──
         title_task: Optional[asyncio.Task] = None
         if session_id:
@@ -713,11 +755,14 @@ async def delete_chat_session(session_id: str, userId: int):
 
 
 @router.get("/api/chat/llm-models")
-async def list_llm_models():
-    """可用的 LLM 模型清单（llm_model 表，enabled=1，按 sort_order 排序）。
-    不返回 api_key。"""
+async def list_llm_models(userId: int = 0):
+    """可用的 LLM 模型清单（enabled=1，按 sort_order 排序），不返回 api_key。
+    userId>0 时按用户隔离（仅自己的模型）；否则返回全部（兼容旧调用）。"""
     try:
-        rows = MysqlClient().get_llm_models(enabled_only=True)
+        if userId:
+            rows = MysqlClient().get_llm_models_for_user(userId, enabled_only=True)
+        else:
+            rows = MysqlClient().get_llm_models(enabled_only=True)
         return [
             {
                 "id": r["id"],
@@ -731,6 +776,111 @@ async def list_llm_models():
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"加载模型清单失败: {e}")
+
+
+# 供应商预设（模型管理页下拉用；Ollama 免 key）
+_LLM_PROVIDERS = [
+    {"key": "ollama", "label": "Ollama", "baseUrl": "http://localhost:11434/v1", "apiKeyRequired": False},
+    {"key": "deepseek", "label": "DeepSeek", "baseUrl": "https://api.deepseek.com/v1", "apiKeyRequired": True},
+    {"key": "qwen", "label": "Qwen（通义千问）", "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1", "apiKeyRequired": True},
+    {"key": "openai", "label": "OpenAI", "baseUrl": "https://api.openai.com/v1", "apiKeyRequired": True},
+]
+
+
+@router.get("/api/chat/llm-providers")
+async def list_llm_providers():
+    """模型供应商预设清单（唯一权威来源，前端不硬编码）。"""
+    return _LLM_PROVIDERS
+
+
+def _mask_key(key: str) -> str:
+    if not key:
+        return ""
+    return key[:6] + "****" + key[-4:] if len(key) > 12 else "****"
+
+
+@router.get("/api/chat/llm-models/manage")
+async def list_llm_models_manage(userId: int):
+    """模型管理列表（用户隔离）：仅自己的模型，key 脱敏。"""
+    rows = MysqlClient().get_llm_models_for_user(userId)
+    return [
+        {
+            "id": r["id"],
+            "provider": r["provider"],
+            "modelName": r["model_name"],
+            "displayName": r["display_name"],
+            "baseUrl": r["base_url"],
+            "apiKeyMasked": _mask_key(r.get("api_key") or ""),
+            "hasKey": bool(r.get("api_key")),
+            "isReasoner": bool(r.get("is_reasoner")),
+            "enabled": bool(r.get("enabled")),
+        }
+        for r in rows
+    ]
+
+
+def _validate_model_payload(body: Dict, is_create: bool) -> Dict:
+    provider = str(body.get("provider") or "").strip()
+    valid_providers = {p["key"] for p in _LLM_PROVIDERS}
+    if provider not in valid_providers:
+        raise HTTPException(status_code=400, detail=f"供应商必须在 {sorted(valid_providers)} 内")
+    model_name = str(body.get("modelName") or "").strip()
+    display_name = str(body.get("displayName") or "").strip() or model_name
+    base_url = str(body.get("baseUrl") or "").strip()
+    api_key = str(body.get("apiKey") or "").strip()
+    if not model_name:
+        raise HTTPException(status_code=400, detail="模型名称不能为空")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="接口地址不能为空")
+    if is_create:
+        preset = next(p for p in _LLM_PROVIDERS if p["key"] == provider)
+        if preset["apiKeyRequired"] and not api_key:
+            raise HTTPException(status_code=400, detail=f"{preset['label']} 需要填写 API Key")
+        if not api_key:
+            api_key = "ollama-no-key"  # 免 key 占位，避免空 key 报错
+    return {
+        "provider": provider, "model_name": model_name, "display_name": display_name,
+        "base_url": base_url, "api_key": api_key,
+        "is_reasoner": bool(body.get("isReasoner")),
+        "enabled": 1 if body.get("enabled", True) else 0,
+        "sort_order": int(body.get("sortOrder") or 0),
+    }
+
+
+@router.post("/api/chat/llm-models/manage")
+async def create_llm_model(body: Dict):
+    """新增模型配置（归属当前用户）。"""
+    userId = body.get("userId")
+    if not userId:
+        raise HTTPException(status_code=400, detail="缺少 userId")
+    data = _validate_model_payload(body, is_create=True)
+    data["user_id"] = int(userId)
+    new_id = MysqlClient().create_llm_model(data)
+    return {"id": new_id, "message": "模型已添加"}
+
+
+@router.put("/api/chat/llm-models/manage/{model_id}")
+async def update_llm_model(model_id: int, body: Dict):
+    """更新模型配置（仅属主可改；apiKey 留空 = 保持不变）。"""
+    userId = body.get("userId")
+    if not userId:
+        raise HTTPException(status_code=400, detail="缺少 userId")
+    data = _validate_model_payload(body, is_create=False)
+    data["user_id"] = int(userId)
+    affected = MysqlClient().update_llm_model(model_id, int(userId), data)
+    if not affected:
+        raise HTTPException(status_code=403, detail="模型不存在或无权修改")
+    return {"message": "模型已更新"}
+
+
+@router.delete("/api/chat/llm-models/manage/{model_id}")
+async def delete_llm_model(model_id: int, userId: int):
+    """逻辑删除模型配置（仅属主可删）。"""
+    affected = MysqlClient().delete_llm_model(model_id, userId)
+    if not affected:
+        raise HTTPException(status_code=403, detail="模型不存在或无权删除")
+    return {"message": "模型已删除"}
+
 
 
 @router.post("/api/chat/agent/stream")

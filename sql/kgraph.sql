@@ -122,6 +122,27 @@ ALTER TABLE corpus MODIFY COLUMN source VARCHAR(128) COMMENT '来源: manual(文
 UPDATE corpus SET source = 'manual' WHERE source IS NULL OR source NOT IN ('manual', 'file');
 UPDATE corpus SET status = 1 WHERE source = 'manual' AND status = 0;
 
+-- 语料分块表
+CREATE TABLE IF NOT EXISTS corpus_chunk (
+    id                      BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
+    corpusId                BIGINT NOT NULL COMMENT '所属语料ID',
+    projectId               BIGINT NOT NULL COMMENT '所属项目ID（冗余，便于按项目统计）',
+    chunkIndex              INT NOT NULL COMMENT '块序号，从0开始',
+    content                 MEDIUMTEXT NOT NULL COMMENT '块文本',
+    startOffset             INT NOT NULL COMMENT '块起始偏移（闭区间，含）',
+    endOffset               INT NOT NULL COMMENT '块结束偏移（闭区间，含）',
+    charCount               INT NOT NULL COMMENT '块字符数',
+    strategy                VARCHAR(32) NOT NULL COMMENT '分块策略: fixed/sentence/recursive/structure',
+    chunkSize               INT COMMENT '生成时的块大小参数（快照）',
+    overlap                 INT COMMENT '生成时的重叠参数（快照）',
+    customSeparator         VARCHAR(64) COMMENT '生成时的自定义分隔符（快照，仅recursive；避开保留字separator）',
+    createBy                BIGINT COMMENT '操作人ID',
+    createTime              DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    isDeleted               TINYINT(1) DEFAULT 0 COMMENT '逻辑删除: 0-未删除 1-已删除',
+    UNIQUE KEY uk_corpus_chunk (corpusId, chunkIndex),
+    INDEX idx_projectId (projectId)
+) COMMENT '语料分块表' COLLATE = utf8mb4_unicode_ci;
+
 -- 抽取任务表
 CREATE TABLE IF NOT EXISTS extraction_task (
     id                      BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',

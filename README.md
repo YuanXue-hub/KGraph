@@ -1,6 +1,6 @@
 # KGraph 知识图谱管理系统
 
-> 基于 Vue 3 + Spring Boot + FastAPI 的知识图谱构建、管理、训练和问答的一体式平台，支持通过 MinerU 解析 PDF/Word 文档构建语料（即将支持文本切分防 LLM 上下文超限），提供结构化抽取、KOS 抽取、深度学习抽取、LLM 抽取四种知识抽取方式，集成 Neo4j 图数据库与 G6 可视化。
+> 基于 Vue 3 + Spring Boot + FastAPI 的知识图谱构建、管理、训练和问答的一体式平台，支持通过 MinerU 解析 PDF/Word 文档构建语料并提供四种策略的文本切分（防止 LLM 上下文超限），提供结构化抽取、KOS 抽取、深度学习抽取、LLM 抽取四种知识抽取方式，集成 Neo4j 图数据库与 G6 可视化。
 
 ---
 
@@ -52,10 +52,11 @@ KGraph 是一个面向知识图谱构建、管理、训练和问答的一体式�
 
 - **项目管理**：多项目隔离，每个项目可创建多个图谱模型
 - **本体建模**：自定义实体类型、关系类型、属性，支持多模型 schema 隔离
-- **语料管理**（含 MinerU 文档解析）：
+- **语料管理**（含 MinerU 文档解析 + 文本切分）：
   - 文本输入：手动输入文本内容直接入库
   - 文档上传：PDF/Word 上传到 MinIO，`@Async` 异步调用 MinerU 解析为 Markdown 入库，前端轮询感知解析状态
   - 支持解析失败后重新触发解析
+  - **文本切分**：四种策略（定长滑窗 / 句子感知合并 / 递归字符分割 / 结构优先切分），支持预览与执行；切分结果存入 `corpus_chunk` 表，保留原文偏移（`startOffset`/`endOffset`）确保可溯源；编辑语料内容时自动清空失效分块
 - **知识抽取**（四种方式）：
   - 结构化抽取：Excel/CSV 字段映射
   - KOS 抽取：领域词表 + TF-IDF 统计 + 三层结构（范畴→概念→术语）
@@ -71,8 +72,7 @@ KGraph 是一个面向知识图谱构建、管理、训练和问答的一体式�
   - 图谱模型（顶部下拉）选择持久化 localStorage，刷新/切换菜单后自动恢复
   - 会话管理：新建/切换/删除会话，历史消息 MySQL 持久化 + Redis 缓存（次日 0 点过期）
   - 会话标题：首轮问答完成后异步调用 LLM 生成 ≤20 字标题（不截断），先发 `done` 恢复输入框、再补发 `title` 事件实时替换会话项标题；短路优化 + 规则兜底降级
-- **LLM 抽取质量评估**：抽取页"质量评估"Tab，支持从抽取历史选择结果与语料一键评估；内在指标（孤立实体率/平均度/关系密度等）+ LLM-as-Judge 抽样评估（G-Eval 风格，实体边界/关系正确性）
-- **文本切分**（规划中）：MinerU 解析后的长 Markdown 文本将按结构/滑动窗口切分为 chunk 存储，防止 LLM 抽取时上下文窗口超限
+- **LLM 抽取质量评估**：抽取页"质量评估"Tab，支持从抽取历史选择结果与语料一键评估；内在指标（孤立实体率/平均度/证据覆盖率/低置信率等）+ LLM-as-Judge 抽样评估（G-Eval 风格，三元组忠实度/谓词合理性/双时态正确性/证据句有效性/实体边界正确性）
 
 ---
 
@@ -152,19 +152,30 @@ KGraph/
 │
 ├── pybackend/                   # Python 微服务
 │   ├── api/                     # FastAPI 路由
-│   │   └── chat_agent.py        # ⭐ 智能问答 SSE Agent 流式接口
+│   │   ├── chat_agent.py        # ⭐ 智能问答 SSE Agent 流式接口
+│   │   ├── extraction.py        # LLM 抽取 + 质量评估
+│   │   ├── evaluation.py        # 评估端点（内在指标 + LLM-as-Judge）
+│   │   └── splitter.py          # ⭐ 文本切分接口（4 策略）
 │   ├── core/                    # 核心算法
-│   │   ├── agent_tools.py       # ⭐ Agent 图谱工具集（6个工具）
+│   │   ├── agent_tools.py       # ⭐ Agent 图谱工具集（8个工具）
 │   │   ├── llm_client.py        # LLM 调用封装
 │   │   ├── prompt_builder.py    # Prompt 构造
 │   │   ├── kos_extractor.py     # KOS 抽取
 │   │   ├── dl_extractor.py      # 深度学习抽取
 │   │   ├── trainer.py           # 模型训练
-│   │   └── graph_writer.py      # Neo4j 写入
+│   │   ├── graph_writer.py      # Neo4j 写入
+│   │   └── extraction_validator.py  # 抽取校验 + 后处理补边
+│   ├── splitter/                # ⭐ 文本切分策略包
+│   │   ├── base.py              # Chunk 数据类 + SplitStrategy 抽象基类
+│   │   ├── fixed.py             # 定长滑窗分块
+│   │   ├── sentence.py          # 句子感知合并分块
+│   │   ├── recursive.py         # 递归字符分割
+│   │   ├── structure.py         # 结构优先切分（Markdown/中文标题）
+│   │   └── __init__.py          # 策略注册表 STRATEGY_REGISTRY
 │   ├── models/                  # Pydantic 模型
 │   ├── text_processor/          # 文本处理工具
 │   ├── config.example.json      # 配置模板
-│   ├── main.py                  # FastAPI 入口（注册 chat_agent 路由）
+│   ├── main.py                  # FastAPI 入口
 │   └── requirements.txt
 │
 ├── sql/                         # 数据库脚本
@@ -365,15 +376,42 @@ Java 主服务
 | `status` | TINYINT | 0-处理中 1-已完成 2-失败 |
 | `content` | MEDIUMTEXT | 文本输入为原文；文件上传为 MinerU 解析后的 Markdown |
 
-### 文本切分（规划中）
+### 文本切分（已实现）
 
-针对 MinerU 解析后的长 Markdown 文本，规划三层渐进式切分策略，防止 LLM 抽取时上下文窗口超限：
+针对 MinerU 解析后的长 Markdown 文本或长文本输入，提供四种切分策略，防止 LLM 抽取时上下文窗口超限。Python 侧 `pybackend/splitter` 包实现策略模式，Java 侧调用 `/api/split` 接口获取结果并入库。
 
-1. **Markdown 结构切分**：按标题层级（`#`、`##`、`###`）切分为语义段落
-2. **滑动窗口切分**：对超长段落按 500 字符窗口 + 50 字符重叠切分，在句子边界处断开
-3. **语义切分**（可选）：基于嵌入向量相似度的边界优化
+#### 1. 四种切分策略
 
-切分结果存入 `corpus_chunk` 表，LLM 抽取时按 chunk 维度并发处理，最终聚合去重写入 Neo4j。`pybackend/text_processor/splitter.py` 已实现基础切分函数，待集成到抽取流程。
+| 策略 | 适用场景 | 说明 |
+|------|---------|------|
+| 定长滑窗 `fixed` | 通用兜底 | 按字符长度切分，重叠区在句子边界处回退 |
+| 句子感知合并 `sentence` | 叙事/散文文本 | 以完整句子为单位合并至接近 chunkSize |
+| 递归字符分割 `recursive` | 混合格式文档 | 按多级分隔符（默认 `\n\n` → `。` → `，`）递归切分，可自定义一级分隔符 |
+| 结构优先 `structure` | Markdown/结构化文档 | 按 Markdown 标题、中文「第X章/节/回」等层级切分，优先保持段落完整 |
+
+#### 2. 关键设计
+
+- **偏移不变性**：每个 chunk 记录 `startOffset` / `endOffset`，保证 `text[startOffset:endOffset+1] == content`，便于抽取证据溯源
+- **预览不落库**：`previewOnly` 参数支持 dry-run 预览分块效果
+- **覆盖式重建**：执行分块时事务内删除旧 chunk 再插入新 chunk，`UNIQUE KEY (corpusId, chunkIndex)` 兜底
+- **编辑失效**：语料内容变更时自动清空已有分块，避免偏移失效
+- **删除级联**：删除语料时物理清理对应 chunk，避免孤儿数据
+
+#### 3. 数据模型（`corpus_chunk` 表）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `corpusId` | BIGINT | 所属语料 ID |
+| `chunkIndex` | INT | 块序号，从 0 开始 |
+| `content` | MEDIUMTEXT | 块文本 |
+| `startOffset` / `endOffset` | INT | 原文偏移（闭区间） |
+| `charCount` | INT | 块字符数 |
+| `strategy` | VARCHAR(32) | 策略快照：fixed/sentence/recursive/structure |
+| `chunkSize` / `overlap` / `customSeparator` | - | 参数快照 |
+
+#### 4. 前端交互
+
+语料管理操作栏新增「分块」按钮：未分块时打开双栏配置对话框（左参数 + 右实时预览），已分块时打开结果抽屉查看已保存分块并支持「重新分块」参数回填。
 
 ### 知识抽取
 

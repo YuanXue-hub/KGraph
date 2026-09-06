@@ -88,7 +88,7 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
     # 抽取模型可指定（llm_model 表 id）：动态构造，无效则回退服务默认配置
     if req.llmModelId:
         try:
-            from core.mysql_client import MysqlClient
+            from utils.db.mysql_client import MysqlClient
             row = MysqlClient().get_llm_model_by_id(int(req.llmModelId))
             if row and row.get("enabled"):
                 llm_client = LLMClient({
@@ -151,6 +151,20 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
         raise HTTPException(status_code=500, detail=f"Neo4j 写入失败: {e}")
 
     api_dict = _to_api_payload(payload, rep)
+    duration_ms = int((time.time() - t_total) * 1000)
+    # 记录 LLM 调用日志（供用量统计）
+    try:
+        from utils.db.mysql_client import MysqlClient
+        model_name = llm_client.model_name if hasattr(llm_client, "model_name") else "unknown"
+        MysqlClient().log_request(
+            user_id=getattr(req, "userId", None),
+            model_name=model_name,
+            total_tokens=total_tokens,
+            duration=duration_ms,
+            status="success",
+        )
+    except Exception:
+        pass
     return ExtractionResult(
         entities=api_dict["entities"],
         relations=api_dict["relations"],
@@ -159,6 +173,6 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
         qualityReport=api_dict["qualityReport"],
         qualityStats=api_dict["qualityStats"],
         tokenConsumed=total_tokens,
-        duration=int((time.time() - t_total) * 1000),
+        duration=duration_ms,
         writeCount=write_count,
     )

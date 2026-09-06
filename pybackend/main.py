@@ -14,6 +14,7 @@ from api.kos import router as kos_router
 from api.dl import router as dl_router
 from api.train import router as train_router
 from api.chat_agent import router as chat_agent_router
+from api.splitter import router as splitter_router
 from core.agent_tools import _Neo4jToolContext
 from core.graph_writer import GraphWriter
 from core.llm_client import LLMClient
@@ -58,6 +59,7 @@ app.include_router(kos_router)
 app.include_router(dl_router)
 app.include_router(train_router)
 app.include_router(chat_agent_router)
+app.include_router(splitter_router)
 
 
 if __name__ == "__main__":

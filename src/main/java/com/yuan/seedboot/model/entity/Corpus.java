@@ -55,4 +55,8 @@ public class Corpus {
     @TableLogic
     @TableField("isDeleted")
     private Integer isDeleted;
+
+    /** 分块数（非表字段，列表页填充，用于判断是否已分块） */
+    @TableField(exist = false)
+    private Long chunkCount;
 }

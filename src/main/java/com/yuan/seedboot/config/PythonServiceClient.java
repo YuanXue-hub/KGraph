@@ -36,7 +36,7 @@ public class PythonServiceClient {
      * @param llmModelId 抽取 LLM 模型 id（可选，空则用 Python 服务默认配置）
      * @return Python 响应 JSON: {entities:[], relations:[], tokenConsumed, duration}
      */
-    public JSONObject extract(String text, Object ontology, Long modelId, String mode, Long llmModelId) {
+    public JSONObject extract(String text, Object ontology, Long modelId, String mode, Long llmModelId, Long userId) {
         if (StrUtil.isBlank(text)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "待抽取文本为空");
         }
@@ -47,6 +47,9 @@ public class PythonServiceClient {
         payload.put("mode", mode);
         if (ObjUtil.isNotNull(llmModelId)) {
             payload.put("llmModelId", llmModelId);
+        }
+        if (ObjUtil.isNotNull(userId)) {
+            payload.put("userId", userId);
         }
 
         return doPost(pythonServiceUrl + "/api/extract", payload, modelId, "LLM");
@@ -208,6 +211,40 @@ public class PythonServiceClient {
     }
 
     /**
+     * 调用 Python 分块接口（无状态纯函数）
+     *
+     * @param text        待分块文本
+     * @param strategy    分块策略: fixed/sentence/recursive/structure
+     * @param chunkSize   块大小（字符，可空取策略默认）
+     * @param overlap     重叠（字符，可空取策略默认）
+     * @param separator   自定义一级分隔符（仅 recursive，可空）
+     * @param previewOnly true 时仅返回前 10 块（totalChunks 仍为真实总数）
+     * @return Python 响应 JSON: {strategy, chunkSize, overlap, totalChunks, avgCharCount, duration, chunks:[{index, content, startOffset, endOffset, charCount}]}
+     */
+    public JSONObject splitText(String text, String strategy, Integer chunkSize, Integer overlap,
+                                String separator, boolean previewOnly) {
+        if (StrUtil.isBlank(text)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "待分块文本为空");
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("text", text);
+        payload.put("strategy", strategy);
+        if (ObjUtil.isNotNull(chunkSize)) {
+            payload.put("chunkSize", chunkSize);
+        }
+        if (ObjUtil.isNotNull(overlap)) {
+            payload.put("overlap", overlap);
+        }
+        if (StrUtil.isNotBlank(separator)) {
+            payload.put("separator", separator);
+        }
+        if (previewOnly) {
+            payload.put("previewOnly", true);
+        }
+        return doPost(pythonServiceUrl + "/api/split", payload, null, "SPLIT");
+    }
+
+    /**
      * 通用 POST 请求封装
      */
     private JSONObject doPost(String url, Map<String, Object> payload, Long modelId, String type) {
@@ -223,8 +260,10 @@ public class PythonServiceClient {
             String respBody = response.body();
             if (!response.isOk()) {
                 log.error("Python {} 抽取服务返回失败, status={}, body={}", type, response.getStatus(), respBody);
+                // 附带 Python 错误详情（截断防超长），便于前端展示具体原因（如分块数超限）
+                String detail = StrUtil.blankToDefault(StrUtil.sub(respBody, 0, 200), "");
                 throw new BusinessException(ErrorCode.OPERATION_ERROR,
-                        "Python " + type + " 抽取服务返回失败: " + response.getStatus());
+                        "Python " + type + " 服务返回失败: " + response.getStatus() + " " + detail);
             }
             log.info("Python {} 抽取服务调用成功, modelId={}", type, modelId);
             return JSONUtil.parseObj(respBody);

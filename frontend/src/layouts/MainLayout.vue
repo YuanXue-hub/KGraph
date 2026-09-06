@@ -33,6 +33,10 @@
             <el-icon><Avatar /></el-icon>
             <span>个人信息</span>
           </el-menu-item>
+          <el-menu-item index="/platform/llm-model">
+            <el-icon><Box /></el-icon>
+            <span>模型管理</span>
+          </el-menu-item>
         </el-sub-menu>
 
         <el-sub-menu index="graph-manage">

@@ -8,6 +8,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.yuan.seedboot.exception.ErrorCode;
 import com.yuan.seedboot.exception.ThrowUtils;
+import com.yuan.seedboot.mapper.CorpusChunkMapper;
 import com.yuan.seedboot.mapper.CorpusMapper;
 import com.yuan.seedboot.model.entity.Corpus;
 import com.yuan.seedboot.model.entity.User;
@@ -21,10 +22,13 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * @description 针对表【corpus(语料)】的数据库操作Service实现
@@ -39,6 +43,9 @@ public class CorpusServiceImpl extends ServiceImpl<CorpusMapper, Corpus>
 
     @Resource
     private MinerUService minerUService;
+
+    @Resource
+    private CorpusChunkMapper corpusChunkMapper;
 
     private static final List<String> ALLOWED_FILE_TYPES = Arrays.asList("pdf", "doc", "docx");
 
@@ -101,6 +108,8 @@ public class CorpusServiceImpl extends ServiceImpl<CorpusMapper, Corpus>
         UpdateWrapper<Corpus> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", id).set("status", 0).set("errorMsg", null);
         this.update(wrapper);
+        // 重新解析将替换内容，原有分块失效，物理清空
+        corpusChunkMapper.deleteByCorpusId(id);
 
         // 异步重新解析
         String fileName = corpus.getTitle() + "." + corpus.getFileType();
@@ -110,12 +119,17 @@ public class CorpusServiceImpl extends ServiceImpl<CorpusMapper, Corpus>
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean updateCorpus(CorpusUpdateRequest request) {
         ThrowUtils.throwIf(request == null || request.getId() == null, ErrorCode.PARAMS_ERROR);
         Corpus corpus = new Corpus();
         BeanUtils.copyProperties(request, corpus);
         boolean result = this.updateById(corpus);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "编辑语料失败");
+        // 内容变更后原有分块偏移量失效，物理清空（前端依据行数据 chunkCount 提示重新分块）
+        if (StrUtil.isNotBlank(request.getContent())) {
+            corpusChunkMapper.deleteByCorpusId(request.getId());
+        }
         return true;
     }
 
@@ -132,15 +146,36 @@ public class CorpusServiceImpl extends ServiceImpl<CorpusMapper, Corpus>
         queryWrapper.eq(ObjUtil.isNotNull(projectId), "projectId", projectId);
         queryWrapper.like(StrUtil.isNotBlank(title), "title", title);
         queryWrapper.orderBy(StrUtil.isNotBlank(sortField), "ascend".equals(sortOrder), sortField);
-        return this.page(new Page<>(current, pageSize), queryWrapper);
+        Page<Corpus> page = this.page(new Page<>(current, pageSize), queryWrapper);
+        fillChunkCount(page);
+        return page;
+    }
+
+    /**
+     * 填充每行语料的分块数（子查询聚合，分页规模下开销可忽略）
+     */
+    private void fillChunkCount(Page<Corpus> page) {
+        List<Long> ids = page.getRecords().stream().map(Corpus::getId).collect(Collectors.toList());
+        if (ids.isEmpty()) {
+            return;
+        }
+        Map<Long, Long> countMap = corpusChunkMapper.countByCorpusIds(ids).stream()
+                .collect(Collectors.toMap(
+                        m -> ((Number) m.get("corpusId")).longValue(),
+                        m -> ((Number) m.get("cnt")).longValue()));
+        page.getRecords().forEach(c -> c.setChunkCount(countMap.getOrDefault(c.getId(), 0L)));
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public boolean deleteCorpus(Long id) {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
         Corpus corpus = this.getById(id);
         ThrowUtils.throwIf(ObjUtil.isNull(corpus), ErrorCode.NOT_FOUND_ERROR, "语料不存在");
-        return this.removeById(id);
+        boolean result = this.removeById(id);
+        // 级联物理清空分块，避免孤儿数据
+        corpusChunkMapper.deleteByCorpusId(id);
+        return result;
     }
 
     private String extractFileType(String filename) {

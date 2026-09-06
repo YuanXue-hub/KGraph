@@ -103,6 +103,7 @@ public class ExtractionController {
     public BaseResponse<Map<String, Object>> evaluate(@RequestBody Map<String, Object> request, HttpServletRequest httpRequest) {
         ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(httpRequest);
+        request.put("userId", loginUser.getId());
         JSONObject result = pythonServiceClient.evaluate(request);
         // hutool 会把 JSON null 解析为 JSONNull 对象，Jackson 无法序列化；
         // 这里用 Jackson 重新解析原始 JSON 字符串，null 还原为 Java null
@@ -126,6 +127,7 @@ public class ExtractionController {
     public SseEmitter evaluateStream(@RequestBody Map<String, Object> request, HttpServletRequest httpRequest) {
         ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(httpRequest);
+        request.put("userId", loginUser.getId());
         SseEmitter emitter = new SseEmitter(600_000L);
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             String reportJson;

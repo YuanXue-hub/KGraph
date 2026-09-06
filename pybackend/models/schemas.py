@@ -56,6 +56,35 @@ class DlExtractionResult(BaseModel):
     writeCount: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SplitChunkItem(BaseModel):
+    """单个分块：偏移量为原文闭区间"""
+    index: int
+    content: str
+    startOffset: int
+    endOffset: int
+    charCount: int
+
+
+class SplitRequest(BaseModel):
+    text: str
+    strategy: str = "fixed"
+    chunkSize: Optional[int] = None
+    overlap: Optional[int] = None
+    separator: Optional[str] = None  # 仅 recursive 策略消费：自定义一级分隔符
+    previewOnly: bool = False  # True 时仅返回前 10 块（totalChunks 仍为真实总数）
+
+
+class SplitResult(BaseModel):
+    strategy: str
+    chunkSize: int
+    overlap: int
+    separator: Optional[str] = None
+    totalChunks: int
+    avgCharCount: int = 0
+    duration: int = 0
+    chunks: List[SplitChunkItem] = Field(default_factory=list)
+
+
 class TrainConfig(BaseModel):
     """训练配置"""
     architecture: str = "BiLSTM-CRF"

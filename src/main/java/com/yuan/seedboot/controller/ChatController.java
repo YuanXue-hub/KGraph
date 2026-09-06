@@ -2,6 +2,7 @@ package com.yuan.seedboot.controller;
 
 import com.yuan.seedboot.model.entity.User;
 import com.yuan.seedboot.service.ChatService;
+import com.yuan.seedboot.service.RequestLogService;
 import com.yuan.seedboot.service.UserService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,6 +12,8 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -23,6 +26,9 @@ public class ChatController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private RequestLogService requestLogService;
 
     /**
      * 创建会话 —— 返回 sessionId
@@ -88,11 +94,57 @@ public class ChatController {
     }
 
     /**
-     * 可用 LLM 模型清单（供前端问答时选择）
+     * 可用 LLM 模型清单（供前端问答/抽取/评估选择，用户隔离：仅自己的）
      */
     @GetMapping("/llm-models")
-    public java.util.List<Map<String, Object>> listLlmModels() {
-        return chatService.listLlmModels();
+    public java.util.List<Map<String, Object>> listLlmModels(HttpServletRequest httpRequest) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        return chatService.listLlmModelsForUser(loginUser.getId());
+    }
+
+    /**
+     * 模型管理：供应商预设清单
+     */
+    @GetMapping("/llm-providers")
+    public java.util.List<Map<String, Object>> listLlmProviders() {
+        return chatService.listLlmProviders();
+    }
+
+    /**
+     * 模型管理：模型列表（用户隔离，key 脱敏）
+     */
+    @GetMapping("/llm-models/manage")
+    public java.util.List<Map<String, Object>> listLlmModelsManage(HttpServletRequest httpRequest) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        return chatService.listLlmModelsManage(loginUser.getId());
+    }
+
+    /**
+     * 模型管理：新增模型（归属当前用户）
+     */
+    @PostMapping("/llm-models/manage")
+    public Map<String, Object> createLlmModel(@RequestBody Map<String, Object> body, HttpServletRequest httpRequest) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        return chatService.createLlmModel(loginUser.getId(), body);
+    }
+
+    /**
+     * 模型管理：更新模型（仅属主可改）
+     */
+    @PutMapping("/llm-models/manage/{modelId}")
+    public Map<String, Object> updateLlmModel(@PathVariable Long modelId, @RequestBody Map<String, Object> body,
+                                              HttpServletRequest httpRequest) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        return chatService.updateLlmModel(loginUser.getId(), modelId, body);
+    }
+
+    /**
+     * 模型管理：删除模型（逻辑删除，仅属主可删）
+     */
+    @DeleteMapping("/llm-models/manage/{modelId}")
+    public Map<String, Object> deleteLlmModel(@PathVariable Long modelId, HttpServletRequest httpRequest) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        return chatService.deleteLlmModel(loginUser.getId(), modelId);
     }
 
     private Long parseLongField(Object obj) {
@@ -106,5 +158,31 @@ public class ChatController {
             }
         }
         return null;
+    }
+
+    /**
+     * LLM 用量统计概览（总调用次数、总 Token 消耗、最近 7 天每日趋势、各模型分布）
+     */
+    @GetMapping("/usage")
+    public Map<String, Object> getUsage(@RequestParam(defaultValue = "7") Integer days,
+                                        HttpServletRequest httpRequest) {
+        User loginUser = userService.getLoginUser(httpRequest);
+        Long userId = loginUser.getId();
+        Map<String, Object> result = new HashMap<>();
+        // 总调用次数
+        long totalCalls = requestLogService.lambdaQuery()
+                .eq(com.yuan.seedboot.model.entity.RequestLog::getUserId, userId)
+                .count();
+        // 总 Token 消耗
+        long totalTokens = requestLogService.countUserTokens(userId);
+        // 每日趋势
+        List<Map<String, Object>> daily = requestLogService.getDailyUsage(userId, days);
+        // 各模型分布
+        List<Map<String, Object>> byModel = requestLogService.getModelUsage(userId);
+        result.put("totalCalls", totalCalls);
+        result.put("totalTokens", totalTokens);
+        result.put("daily", daily);
+        result.put("byModel", byModel);
+        return result;
     }
 }
