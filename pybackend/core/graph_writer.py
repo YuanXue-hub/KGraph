@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 from neo4j import GraphDatabase
@@ -9,6 +10,16 @@ from core.extraction_schema import (
     EvidenceSpan,
     LlmExtractionPayload,
 )
+
+
+def _now() -> str:
+    """统一时间戳（ISO 8601 秒级，本地时区）：实体/关系的 createTime、updateTime 全链路唯一格式。
+
+    维护规则：
+    - 图谱中不存在（首次写入）：createTime = updateTime = now
+    - 图谱中已存在（第二次及之后抽取命中）：仅刷新 updateTime，createTime 保持不变
+    """
+    return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _sanitize_properties(props: Any) -> Dict[str, Any]:
@@ -71,6 +82,7 @@ class GraphWriter:
         """写入实体与关系到 Neo4j，节点/关系均带 modelId 隔离。使用 MERGE 避免重复。"""
         entity_count = 0
         relation_count = 0
+        now = _now()
 
         with self.driver.session() as session:
             for e in entities:
@@ -78,13 +90,15 @@ class GraphWriter:
                 session.run(
                     """
                     MERGE (n:Entity {name: $name, type: $type, modelId: $modelId})
+                    ON CREATE SET n.createTime = $now
                     SET n += $properties,
-                        n.createTime = timestamp()
+                        n.updateTime = $now
                     """,
                     name=e.get("name"),
                     type=e.get("type"),
                     modelId=model_id,
                     properties=props,
+                    now=now,
                 )
                 entity_count += 1
 
@@ -95,14 +109,16 @@ class GraphWriter:
                     MATCH (a:Entity {name: $head, modelId: $modelId}),
                           (b:Entity {name: $tail, modelId: $modelId})
                     MERGE (a)-[rel:RELATION {type: $relationType, modelId: $modelId}]->(b)
+                    ON CREATE SET rel.createTime = $now
                     SET rel += $properties,
-                        rel.createTime = timestamp()
+                        rel.updateTime = $now
                     """,
                     head=r.get("head"),
                     tail=r.get("tail"),
                     relationType=r.get("relation"),
                     modelId=model_id,
                     properties=props,
+                    now=now,
                 )
                 relation_count += 1
 
@@ -124,6 +140,7 @@ class GraphWriter:
         """写入 LLM 抽取 payload 到 Neo4j。返回写入计数 + 缺失节点列表。"""
         counts = {"entities": 0, "timeAnchors": 0, "relations": 0, "causalEdges": 0,
                   "missing_nodes_created": 0}
+        now = _now()
 
         VALID_ANCHOR_TYPES = {"DATE", "DATERANGE", "RELATIVE", "NOW", "OPEN", "UNKNOWN"}
         with self.driver.session() as session:
@@ -151,8 +168,8 @@ class GraphWriter:
                                   n.mentionSpans = coalesce(n.mentionSpans, []) + CASE
                                       WHEN $span IN coalesce(n.mentionSpans, []) THEN []
                                       ELSE [$span] END,
-                                  n.updateTime = timestamp(),
-                                  n.createTime = timestamp()
+                                  n.updateTime = $now,
+                                  n.createTime = $now
                     ON MATCH SET n.name = $canonicalName,
                                  n.source = 'llm_extract',
                                  n.kosCategory = coalesce($kosCategory, n.kosCategory),
@@ -162,7 +179,7 @@ class GraphWriter:
                                  n.mentionSpans = coalesce(n.mentionSpans, []) + CASE
                                      WHEN $span IN coalesce(n.mentionSpans, []) THEN []
                                      ELSE [$span] END,
-                                 n.updateTime = timestamp()
+                                 n.updateTime = $now
                     """,
                     canonicalName=e.canonicalName,
                     type=e.type,
@@ -170,6 +187,7 @@ class GraphWriter:
                     kosCategory=e.kosCategory,
                     mention=e.mention,
                     span=span_str,
+                    now=now,
                 )
                 counts["entities"] += 1
 
@@ -192,13 +210,13 @@ class GraphWriter:
                         precision: $precision, relativeAnchor: $relativeAnchor,
                         mentionSpan: $span,
                         docId: coalesce($docId, ''),
-                        modelId: $modelId, createTime: timestamp()
+                        modelId: $modelId, createTime: $now
                     })
                     """,
                     expr=a.expr, type=a.type, normISO=a.normISO or "",
                     precision=a.precision,
                     relativeAnchor=a.relativeAnchor or "",
-                    span=span_str, docId=doc_id, modelId=model_id,
+                    span=span_str, docId=doc_id, modelId=model_id, now=now,
                 )
                 counts["timeAnchors"] += 1
 
@@ -214,17 +232,19 @@ class GraphWriter:
                     f"""
                     MERGE (n:Entity{label_clause} {{canonicalName: $cname, type: $ctype, modelId: $modelId}})
                     ON CREATE SET n.name = $cname, n.source = 'llm_extract:auto_placeholder',
-                                  n.createTime = timestamp(), n.updateTime = timestamp(),
+                                  n.createTime = $now, n.updateTime = $now,
                                   n.autoCreated = true
-                    ON MATCH  SET n.updateTime = timestamp()
+                    ON MATCH  SET n.updateTime = $now
                     RETURN n.autoCreated as autoCreated
                     """,
-                    cname=cname, ctype=final_type, modelId=model_id,
+                    cname=cname, ctype=final_type, modelId=model_id, now=_now(),
                 ).single()
                 if result and result.get("autoCreated") is True:
                     counts["missing_nodes_created"] += 1
 
             # 3) 关系写入（CREATE，永不覆盖；同一条多次抽会存多个时态版本——这是 Semantica 双时态的核心）
+            #    时间维护：图谱中已存在同 (s, predicate, o) 的边 → 刷新其 updateTime；
+            #    本次新建的边 → createTime = updateTime = now
             for r in payload.relations:
                 ensure_node(session, r.subject, r.subjectType)
                 ensure_node(session, r.object, r.objectType)
@@ -234,6 +254,9 @@ class GraphWriter:
                     """
                     MATCH (s:Entity {canonicalName: $s_cname, modelId: $modelId}),
                           (o:Entity {canonicalName: $o_cname, modelId: $modelId})
+                    OPTIONAL MATCH (s)-[prev:RELATION {predicate: $predicate, modelId: $modelId}]->(o)
+                    WITH s, o, collect(prev) AS prevs
+                    FOREACH (p IN prevs | SET p.updateTime = $now)
                     CREATE (s)-[r:RELATION {
                         predicate: $predicate,
                         type: $predicate,
@@ -249,7 +272,8 @@ class GraphWriter:
                         lowConfidence: $lowConf,
                         evidence: $evidence,
                         docId: coalesce($docId, ''),
-                        createTime: timestamp()
+                        createTime: $now,
+                        updateTime: $now
                     }]->(o)
                     """,
                     s_cname=r.subject, o_cname=r.object,
@@ -262,6 +286,7 @@ class GraphWriter:
                     evidence=evidence,
                     docId=doc_id,
                     modelId=model_id,
+                    now=now,
                 )
                 counts["relations"] += 1
 
@@ -280,6 +305,9 @@ class GraphWriter:
                     """
                     MATCH (ca:Entity {canonicalName: $ca_cname, modelId: $modelId}),
                           (cb:Entity {canonicalName: $cb_cname, modelId: $modelId})
+                    OPTIONAL MATCH (ca)-[prev:CAUSES {direction: $direction, modelId: $modelId}]->(cb)
+                    WITH ca, cb, collect(prev) AS prevs
+                    FOREACH (p IN prevs | SET p.updateTime = $now)
                     CREATE (ca)-[c:CAUSES {
                         type: $display_type,
                         direction: $direction,
@@ -293,7 +321,8 @@ class GraphWriter:
                         lowConfidence: $lowConf,
                         evidence: $evidence,
                         docId: coalesce($docId, ''),
-                        createTime: timestamp()
+                        createTime: $now,
+                        updateTime: $now
                     }]->(cb)
                     """,
                     ca_cname=c.causeEvent, cb_cname=c.effectEvent,
@@ -306,6 +335,7 @@ class GraphWriter:
                     evidence=evidence,
                     docId=doc_id,
                     modelId=model_id,
+                    now=now,
                 )
                 counts["causalEdges"] += 1
 

@@ -11,6 +11,8 @@ import org.neo4j.driver.types.Node;
 import org.neo4j.driver.types.Relationship;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -362,10 +364,13 @@ public class Neo4jService {
         params.put("name", name);
         params.put("type", type);
         params.put("properties", safeProps);
+        // 与 Python 抽取侧统一：ISO 8601 秒级字符串
+        params.put("now", LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")));
 
         List<Map<String, Object>> result = executeQuery(
                 "CREATE (n:Entity {name: $name, type: $type, modelId: $modelId}) "
-                        + "SET n += $properties, n.createTime = timestamp() RETURN n",
+                        + "SET n += $properties, n.createTime = $now, n.updateTime = $now RETURN n",
                 params,
                 record -> nodeToMap(record.get("n").asNode()));
         return result.isEmpty() ? null : result.get(0);

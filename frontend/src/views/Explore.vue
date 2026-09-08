@@ -246,9 +246,10 @@ const detailProps = computed(() => {
   if (!selectedItem.value) return []
   const raw = selectedItem.value.rawData || {}
   // 过滤掉系统字段和已在上方展示的字段（type/name 已在类型/名称区域展示）
+  // createTime/updateTime 保留展示：ISO 格式可读，用于区分首次抽取与后续更新
   const excludeKeys = new Set([
     'elementId', 'labels', 'startNodeElementId', 'endNodeElementId',
-    'relationType', 'modelId', 'createTime', 'type', 'name'
+    'relationType', 'modelId', 'type', 'name'
   ])
   return Object.entries(raw)
     .filter(([k]) => !excludeKeys.has(k))
