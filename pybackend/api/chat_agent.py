@@ -258,13 +258,17 @@ async def generate_session_title(user_question: str, ai_answer: str) -> str:
 
     while attempt < total_attempts:
         attempt += 1
+        t_title = time.time()
         try:
             loop = asyncio.get_event_loop()
             text, _toks = await loop.run_in_executor(None, llm.chat, messages)
         except Exception as e:
             logger.warning("标题生成 attempt=%d LLM 调用失败: %s", attempt, e)
+            _log_title_call(user_id, 0, t_title, "error")
             # LLM 报错（网络/额度）→ 直接走规则兜底
             return _rule_based_title_fallback(u, a)
+        # 每次真实 LLM 调用记 1 条（含重试），与问答/抽取/评估埋点口径一致
+        _log_title_call(user_id, _toks, t_title, "success")
 
         last_generated_text = text
         title = _normalize_title_output(text)
@@ -625,10 +629,11 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                             full_answer_parts.append(full_text)
 
     except Exception as e:
+        chat_failed = True
         yield _sse_event("error", {"message": str(e)})
         traceback.print_exc()
     finally:
-        # ── 记录 LLM 调用日志（供用量统计） ──
+        # ── 记录 LLM 调用日志（供用量统计）：1 轮问答 1 条（token 跨工具轮次累计） ──
         try:
             chat_duration_ms = int((time.time() - chat_start_time) * 1000)
             MysqlClient().log_request(
@@ -636,7 +641,7 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                 model_name=chat_model_name,
                 total_tokens=chat_total_tokens,
                 duration=chat_duration_ms,
-                status="success",
+                status="error" if chat_failed else "success",
             )
         except Exception:
             pass
@@ -671,7 +676,7 @@ async def _stream_agent_response(config: Dict[str, Any], model_id: int, message:
                             sid=session_id, uid=user_id or 0, u=user_msg, a=ai_msg
                         ):
                             try:
-                                t = await generate_session_title(u, a)
+                                t = await generate_session_title(u, a, user_id=uid or None)
                             except Exception as exc:
                                 logger.exception("后台生成会话标题异常：%s", exc)
                                 t = ""

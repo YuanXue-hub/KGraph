@@ -108,11 +108,27 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
     if not text:
         raise HTTPException(status_code=400, detail="待抽取文本为空")
 
+    def _log_call(tokens: int, dur_ms: int):
+        """按实际 LLM 调用逐条埋点（阶段1/阶段2 各 1 条，与评估按指标埋点口径一致）。"""
+        try:
+            from utils.db.mysql_client import MysqlClient
+            model_name = llm_client.model_name if hasattr(llm_client, "model_name") else "unknown"
+            MysqlClient().log_request(
+                user_id=getattr(req, "userId", None),
+                model_name=model_name,
+                total_tokens=tokens,
+                duration=dur_ms,
+                status="success",
+            )
+        except Exception:
+            pass
+
     t_total = time.time()
     total_tokens = 0
     rep = QualityReport()
 
     # ---- 阶段1：节点抽取（可复用方法）----
+    t_stage = time.time()
     try:
         stage1: EntityStageResult = extract_entities(
             llm_client, text, ontology=req.ontology or None, rep=rep,
@@ -120,8 +136,10 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     total_tokens += stage1.tokens
+    _log_call(stage1.tokens, int((time.time() - t_stage) * 1000))
 
     # ---- 阶段2：关系抽取（实体表硬约束，可复用方法）----
+    t_stage = time.time()
     try:
         relations, tok2 = extract_relations(
             llm_client, text, stage1, ontology=req.ontology or None, rep=rep,
@@ -129,6 +147,7 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     total_tokens += tok2
+    _log_call(tok2, int((time.time() - t_stage) * 1000))
 
     # ---- 组装 payload + 质量管道兜底（W1-W5：span 夹紧 / 时态交换 / 消歧 / DAG / 低置信标记）----
     payload = LlmExtractionPayload(

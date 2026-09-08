@@ -162,11 +162,15 @@ def _sample(items: List[Any], n: int) -> List[Any]:
 
 
 def _judge(llm_client: LLMClient, metric_label: str, criteria: str,
-           text: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+           text: str, items: List[Dict[str, Any]],
+           calls: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """G-Eval 风格单维度裁判：criteria 注入 + 逐条判定 + 严格 JSON 输出。
 
     三级判定：verdict 2=完全满足 / 1=部分满足（轻微偏差）/ 0=不满足或错误。
     score = Σverdict / (2n)，部分正确的样本贡献 0.5 分，避免二值判定的信息损失。
+
+    calls：调用收集器（可选）。每次真实发起的 LLM 调用追加一条
+    {label, tokens, duration, status}，供调用监控按实际次数逐条埋点。
 
     返回 {score: 0-1 或 None, reason: 整体结论, details: 每条样本判定, tokens}。
     """
@@ -193,10 +197,22 @@ def _judge(llm_client: LLMClient, metric_label: str, criteria: str,
         "2 贡献满分，1 贡献半分，0 贡献零分。请据此把握三档的严格边界——"
         "拿不准时优先自问：「这条的偏差值不值整整扣掉半分？」"
     )
-    content, tokens = llm_client.chat(
-        [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        force_json=True,
-    )
+    t_call = time.time()
+    try:
+        content, tokens = llm_client.chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            force_json=True,
+        )
+    except Exception:
+        if calls is not None:
+            calls.append({"label": metric_label, "tokens": 0,
+                          "duration": int((time.time() - t_call) * 1000),
+                          "status": "error"})
+        raise
+    if calls is not None:
+        calls.append({"label": metric_label, "tokens": tokens,
+                      "duration": int((time.time() - t_call) * 1000),
+                      "status": "success"})
     data = _extract_json(content)
 
     verdicts: Dict[int, Dict[str, Any]] = {}
@@ -234,12 +250,13 @@ def _judge(llm_client: LLMClient, metric_label: str, criteria: str,
 
 
 def _judge_safe(llm_client: LLMClient, metric_label: str, criteria: str,
-                text: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+                text: str, items: List[Dict[str, Any]],
+                calls: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """单指标失败不拖垮整体评估。"""
     if not items:
         return {"score": None, "reason": "无可用样本", "details": [], "tokens": 0}
     try:
-        return _judge(llm_client, metric_label, criteria, text, items)
+        return _judge(llm_client, metric_label, criteria, text, items, calls=calls)
     except Exception as e:
         return {"score": None, "reason": f"该指标评估失败: {str(e)[:120]}", "details": [], "tokens": 0}
 
@@ -321,6 +338,8 @@ def _evaluate_events(req: EvaluationRequest, request: Request):
     rel_sample = _sample(req.relations, sample_n)
     ent_sample = _sample(req.entities, sample_n)
     judge: Dict[str, Dict[str, Any]] = {}
+    # 逐次调用收集器：每次真实发起的裁判 LLM 调用记一条，供调用监控逐条埋点
+    judge_calls: List[Dict[str, Any]] = []
 
     def _emit_metric(key: str, label: str, m: Dict[str, Any]):
         judge[key] = m
@@ -343,7 +362,7 @@ def _evaluate_events(req: EvaluationRequest, request: Request):
             yield _emit_metric("tripleFaithfulness", "三元组忠实度", m)
 
         if "predicateReasonableness" in selected:
-            m = _judge_safe(llm_client, "谓词合理性", _CRITERIA_PREDICATE, text, base_items)
+            m = _judge_safe(llm_client, "谓词合理性", _CRITERIA_PREDICATE, text, base_items, calls=judge_calls)
             total_tokens += m["tokens"]
             yield _emit_metric("predicateReasonableness", "谓词合理性", m)
 
@@ -373,7 +392,7 @@ def _evaluate_events(req: EvaluationRequest, request: Request):
                         "tail": str(r.get("tail") or ""),
                         "evidence": ev,
                     })
-            m = _judge_safe(llm_client, "证据句有效性", _CRITERIA_EVIDENCE, text, ev_items)
+            m = _judge_safe(llm_client, "证据句有效性", _CRITERIA_EVIDENCE, text, ev_items, calls=judge_calls)
             total_tokens += m["tokens"]
             yield _emit_metric("evidenceValidity", "证据句有效性", m)
     elif req.entities:
@@ -399,7 +418,7 @@ def _evaluate_events(req: EvaluationRequest, request: Request):
             {"id": i + 1, "name": str(e.get("name") or ""), "type": str(e.get("type") or "")}
             for i, e in enumerate(ent_sample)
         ]
-        m = _judge_safe(llm_client, "实体边界正确性", _CRITERIA_ENTITY, text, ent_items)
+        m = _judge_safe(llm_client, "实体边界正确性", _CRITERIA_ENTITY, text, ent_items, calls=judge_calls)
         total_tokens += m["tokens"]
         yield _emit_metric("entityCorrectness", "实体边界正确性", m)
 
@@ -414,6 +433,9 @@ def _evaluate_events(req: EvaluationRequest, request: Request):
         "tokenConsumed": total_tokens,
         "duration": int((time.time() - t0) * 1000),
         "judgeModel": judge_model_name,
+        "judgeModelRaw": judge_model_raw,
+        "judgeCalls": len(judge_calls),
+        "judgeCallDetails": judge_calls,
     }
 
 
@@ -423,6 +445,7 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
     judge: Dict[str, Dict[str, Any]] = {}
     judge_model_name = ""
+    call_details: List[Dict[str, Any]] = []
     for event, data in _evaluate_events(req, request):
         if event == "intrinsic":
             result["intrinsic"] = data
@@ -430,18 +453,22 @@ def evaluate(req: EvaluationRequest, request: Request) -> Dict[str, Any]:
             judge[data["key"]] = data["data"]
         elif event == "done":
             result.update(data)
-            judge_model_name = data.get("judgeModel", "")
+            # 埋点用原始 model_name（与抽取/问答一致），报告字段 judgeModel 保留显示格式
+            judge_model_name = data.get("judgeModelRaw") or data.get("judgeModel") or ""
+            call_details = data.get("judgeCallDetails") or []
     result["llmJudge"] = judge
-    # 记录 LLM 调用日志（供用量统计）
+    # 记录 LLM 调用日志（供用量统计）：按裁判实际调用次数逐条记录（每次评估最多 5 条）
     try:
         from utils.db.mysql_client import MysqlClient
-        MysqlClient().log_request(
-            user_id=req.userId,
-            model_name=judge_model_name or "unknown",
-            total_tokens=result.get("tokenConsumed", 0),
-            duration=result.get("duration", 0),
-            status="success",
-        )
+        client = MysqlClient()
+        for c in call_details:
+            client.log_request(
+                user_id=req.userId,
+                model_name=judge_model_name or "unknown",
+                total_tokens=c.get("tokens", 0),
+                duration=c.get("duration", 0),
+                status=c.get("status", "success"),
+            )
     except Exception:
         pass
     return result
@@ -459,28 +486,32 @@ def evaluate_stream(req: EvaluationRequest, request: Request):
         judge_model_name = ""
         total_tokens = 0
         duration = 0
+        call_details: List[Dict[str, Any]] = []
         try:
             for event, data in _evaluate_events(req, request):
                 if event == "done":
                     judge_model_name = data.get("judgeModel", "")
                     total_tokens = data.get("tokenConsumed", 0)
                     duration = data.get("duration", 0)
+                    call_details = data.get("judgeCallDetails") or []
                 yield f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
         except HTTPException as e:
             yield f"event: error\ndata: {json.dumps({'message': str(e.detail)}, ensure_ascii=False)}\n\n"
         except Exception as e:
             yield f"event: error\ndata: {json.dumps({'message': str(e)[:200]}, ensure_ascii=False)}\n\n"
         finally:
-            # 记录 LLM 调用日志（供用量统计）
+            # 记录 LLM 调用日志（供用量统计）：按裁判实际调用次数逐条记录（每次评估最多 5 条）
             try:
                 from utils.db.mysql_client import MysqlClient
-                MysqlClient().log_request(
-                    user_id=req.userId,
-                    model_name=judge_model_name or "unknown",
-                    total_tokens=total_tokens,
-                    duration=duration,
-                    status="success",
-                )
+                client = MysqlClient()
+                for c in call_details:
+                    client.log_request(
+                        user_id=req.userId,
+                        model_name=judge_model_name or "unknown",
+                        total_tokens=c.get("tokens", 0),
+                        duration=c.get("duration", 0),
+                        status=c.get("status", "success"),
+                    )
             except Exception:
                 pass
 
