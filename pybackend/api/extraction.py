@@ -171,19 +171,7 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
 
     api_dict = _to_api_payload(payload, rep)
     duration_ms = int((time.time() - t_total) * 1000)
-    # 记录 LLM 调用日志（供用量统计）
-    try:
-        from utils.db.mysql_client import MysqlClient
-        model_name = llm_client.model_name if hasattr(llm_client, "model_name") else "unknown"
-        MysqlClient().log_request(
-            user_id=getattr(req, "userId", None),
-            model_name=model_name,
-            total_tokens=total_tokens,
-            duration=duration_ms,
-            status="success",
-        )
-    except Exception:
-        pass
+    # LLM 调用监控埋点：阶段1/阶段2 已在上方 _log_call 逐条记录，此处不再重复汇总
     return ExtractionResult(
         entities=api_dict["entities"],
         relations=api_dict["relations"],

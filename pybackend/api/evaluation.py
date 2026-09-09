@@ -296,8 +296,9 @@ def _evaluate_events(req: EvaluationRequest, request: Request):
     SSE 端点逐事件推送（前端实时出分），同步端点聚合为完整报告。
     """
     llm_client: LLMClient = request.app.state.llm_client
-    # 裁判模型标识：记录实际使用的模型（显示名 + model_name），随报告返回
-    judge_model_name = getattr(llm_client, "model_name", "") or "default"
+    # 裁判模型标识：judgeModelRaw=原始 model_name（埋点/统计口径），judgeModel=显示格式（随报告返回）
+    judge_model_raw = getattr(llm_client, "model_name", "") or "default"
+    judge_model_name = judge_model_raw
     # 裁判模型可指定（llm_model 表 id）：动态构造，无效则回退服务默认配置
     if req.llmModelId:
         try:
@@ -312,6 +313,7 @@ def _evaluate_events(req: EvaluationRequest, request: Request):
                         "max_retries": 1,
                     }
                 })
+                judge_model_raw = row["model_name"]
                 judge_model_name = f"{row.get('display_name') or row['model_name']} ({row['model_name']})"
         except Exception:
             import traceback
@@ -490,7 +492,8 @@ def evaluate_stream(req: EvaluationRequest, request: Request):
         try:
             for event, data in _evaluate_events(req, request):
                 if event == "done":
-                    judge_model_name = data.get("judgeModel", "")
+                    # 埋点用原始 model_name（与抽取/问答/同步端点一致口径）
+                    judge_model_name = data.get("judgeModelRaw") or data.get("judgeModel") or ""
                     total_tokens = data.get("tokenConsumed", 0)
                     duration = data.get("duration", 0)
                     call_details = data.get("judgeCallDetails") or []

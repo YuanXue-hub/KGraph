@@ -479,6 +479,223 @@ def get_causal_chain(
     return "\n".join(lines)
 
 
+@tool
+def get_entity_neighborhood(
+    model_id: int,
+    start_entity: str,
+    end_entity: str | None = None,
+    max_hops: int = 2,
+    relation_type: str | None = None,
+    limit_paths: int = 10,
+) -> str:
+    """查询实体的多跳关联邻居与关联路径：不限关系类型的 BFS 多跳遍历（覆盖普通关系 :RELATION 与因果边 :CAUSES）。
+
+    参数说明：
+      - model_id:      图谱模型 ID
+      - start_entity:  起始实体名称（必填，对应 name 或 canonicalName）
+      - end_entity:    可选，目标实体名称；填了就查「起点→终点」的最短关联路径；
+                       不填就查「起点向外辐射」的多跳邻居树
+      - max_hops:      最大跳数，1~4；默认 2 跳
+      - relation_type: 可选，按关系名称过滤（包含匹配），如"任职""持股"；不填查全部关系
+      - limit_paths:   最多返回路径条数，默认 10 条避免输出过长
+
+    典型用法：
+      · "和 某公司 有关联的实体还有哪些？（2跳以内）" → start_entity="某公司" end_entity=None
+      · "A 和 B 之间是怎么关联起来的？" → start_entity="A" end_entity="B"（两点路径模式）
+    """
+    # ---- 参数规范 ----
+    if not start_entity or not start_entity.strip():
+        return "错误：start_entity 不能为空。"
+    start_entity = start_entity.strip()
+    end_entity = end_entity.strip() if (end_entity and end_entity.strip()) else None
+    max_hops = max(1, min(4, int(max_hops)))       # 夹到 1~4
+    limit_paths = max(1, min(50, int(limit_paths)))
+
+    # 关系名称过滤条件：路径模式作用于路径上所有边，首跳模式作用于单条边
+    rt = (relation_type or "").strip()
+    path_filter = " AND ALL(rel IN rels WHERE coalesce(rel.type, rel.predicate, type(rel)) CONTAINS $rt)" if rt else ""
+    first_filter = " AND coalesce(r.type, r.predicate, type(r)) CONTAINS $rt" if rt else ""
+
+    # ====================================================================
+    # 场景 A：指定了 end_entity → 查 start~end 的最短关联路径（无向 BFS，逐跳扩展）
+    # ====================================================================
+    if end_entity:
+        # 先确认起终点都存在，不存在就提示用户
+        exist = _query(
+            """
+            MATCH (s:Entity {modelId: $mid})
+            WHERE s.canonicalName = $start OR s.name = $start
+            WITH s
+            MATCH (e:Entity {modelId: $mid})
+            WHERE e.canonicalName = $end OR e.name = $end
+            RETURN count(DISTINCT s) AS s_cnt, count(DISTINCT e) AS e_cnt
+            """,
+            mid=model_id, start=start_entity, end=end_entity,
+        )
+        if not exist or exist[0]["s_cnt"] == 0:
+            return f"未找到起始实体「{start_entity}」，请先通过 search_entities 确认名称。"
+        if exist[0]["e_cnt"] == 0:
+            return f"未找到目标实体「{end_entity}」，请先通过 search_entities 确认名称。"
+
+        # 无向可变长路径：边方向可能沿路径正向或反向，用 startNode 对齐逐边还原真实方向
+        paths_records = _query(
+            f"""
+            MATCH path = (s:Entity {{modelId: $mid}})-[rels *1..{max_hops}]-(e:Entity {{modelId: $mid}})
+            WHERE (s.canonicalName = $start OR s.name = $start)
+              AND (e.canonicalName = $end OR e.name = $end)
+              AND s <> e{path_filter}
+            WITH path, length(path) AS hops,
+                 [n IN nodes(path) | coalesce(n.canonicalName, n.name)] AS nodes,
+                 [rel IN relationships(path) | coalesce(rel.type, rel.predicate, type(rel))] AS edges,
+                 [rel IN relationships(path) | type(rel)] AS kinds,
+                 [rel IN relationships(path) | coalesce(rel.direction, '')] AS pdirs,
+                 [i IN range(0, size(relationships(path)) - 1) |
+                    CASE WHEN nodes(path)[i] = startNode(relationships(path)[i])
+                         THEN 'out' ELSE 'in' END] AS dirs
+            RETURN nodes, edges, kinds, pdirs, dirs, hops
+            ORDER BY hops ASC
+            LIMIT $lim
+            """,
+            mid=model_id, start=start_entity, end=end_entity,
+            lim=limit_paths, **({"rt": rt} if rt else {}),
+        )
+
+        if not paths_records:
+            hint = (
+                f"提示：可以调大 max_hops（当前 {max_hops}）"
+                + (f"，或放宽关系名过滤（当前包含「{rt}」）" if rt else "")
+                + "再试。"
+            )
+            return (
+                f"在 {max_hops} 跳以内未找到「{start_entity}」和「{end_entity}」之间的关联路径。\n{hint}"
+            )
+
+        # 按展示键去重（双时态写入会产生同形并列边，展示层面合并）
+        seen: set = set()
+        deduped = []
+        for p in paths_records:
+            key = (tuple(p["nodes"]), tuple(p["edges"]), tuple(p["dirs"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(p)
+
+        lines = [
+            f"查询结果：「{start_entity}」和「{end_entity}」之间共找到 {len(deduped)} 条关联路径"
+            f"（{max_hops} 跳以内，按跳数升序）：",
+            "-" * 40,
+        ]
+        for idx, p in enumerate(deduped, 1):
+            nodes, edges, kinds, dirs, hops = p["nodes"], p["edges"], p["kinds"], p["dirs"], p["hops"]
+            # 组装一条路径的可读表示（← / → 还原每条边的真实方向）
+            parts: list[str] = []
+            for i, n in enumerate(nodes):
+                parts.append(f"「{n}」")
+                if i < len(edges):
+                    pre = "[因果·预防]" if (kinds[i] == "CAUSES" and dirs[i] == "PREVENT") \
+                        else "[因果]" if kinds[i] == "CAUSES" else ""
+                    arrow = "→" if dirs[i] == "out" else "←"
+                    parts.append(f"—[{pre}{edges[i]}]{arrow}")
+            lines.append(f"路径{idx}（{hops}跳）：\n  " + " ".join(parts))
+        return "\n".join(lines)
+
+    # ====================================================================
+    # 场景 B：未指定 end_entity → 从 start 向外辐射的多跳邻居（BFS 层序，无向）
+    # ====================================================================
+    # 先确认起点存在
+    exist = _query(
+        """
+        MATCH (s:Entity {modelId: $mid})
+        WHERE s.canonicalName = $start OR s.name = $start
+        RETURN count(s) AS cnt
+        """,
+        mid=model_id, start=start_entity,
+    )
+    if not exist or exist[0]["cnt"] == 0:
+        return f"未找到起始实体「{start_entity}」，请先通过 search_entities 确认名称。"
+
+    # 查 max_hops 内所有可达邻居，取最短跳数，按层级聚合展示
+    tree_records = _query(
+        f"""
+        MATCH path = (s:Entity {{modelId: $mid}})-[rels *1..{max_hops}]-(t:Entity {{modelId: $mid}})
+        WHERE (s.canonicalName = $start OR s.name = $start)
+          AND t <> s{path_filter}
+        WITH coalesce(t.canonicalName, t.name) AS tname, min(length(path)) AS hops
+        ORDER BY hops ASC, tname ASC
+        WITH hops, collect(tname) AS neighbors
+        RETURN hops, size(neighbors) AS cnt, neighbors
+        ORDER BY hops ASC
+        """,
+        mid=model_id, start=start_entity, **({"rt": rt} if rt else {}),
+    )
+
+    # 同时把首跳（直接关联）详细列出来，含关系名与边方向
+    first_hop = _query(
+        f"""
+        MATCH (s:Entity {{modelId: $mid}})-[r]-(t:Entity {{modelId: $mid}})
+        WHERE (s.canonicalName = $start OR s.name = $start){first_filter}
+        RETURN coalesce(r.type, r.predicate, type(r)) AS relation,
+               type(r) AS kind,
+               coalesce(r.direction, '') AS direction,
+               CASE WHEN s = startNode(r) THEN 'out' ELSE 'in' END AS dir,
+               coalesce(t.canonicalName, t.name) AS target,
+               t.type AS ttype
+        ORDER BY target ASC
+        LIMIT $lim
+        """,
+        mid=model_id, start=start_entity, lim=max(20, limit_paths),
+        **({"rt": rt} if rt else {}),
+    )
+
+    rt_note = f"（按关系名过滤：包含「{rt}」）" if rt else ""
+    lines = [f"「{start_entity}」的多跳关联邻居（{max_hops} 跳以内，无向遍历）{rt_note}:"]
+
+    if first_hop:
+        lines.append("")
+        lines.append("【第 1 跳 · 直接关联】（展示前 20 条）:")
+        seen_first: set = set()
+        for r in first_hop:
+            key = (r.get("dir"), r.get("relation"), r.get("target"))
+            if key in seen_first:
+                continue  # 双时态并列边去重
+            seen_first.add(key)
+            kind = r.get("kind", "")
+            d = r.get("dir", "out")
+            if kind == "CAUSES":
+                pre = "[因果·预防]" if r.get("direction") == "PREVENT" else "[因果]"
+            else:
+                pre = ""
+            arrow = f"—[{pre}{r.get('relation', '')}]→" if d == "out" else f"←[{pre}{r.get('relation', '')}]—"
+            ttype = f" [{r.get('ttype') or '未分类'}]" if r.get("ttype") else ""
+            lines.append(f"  · {start_entity}  {arrow}  {r.get('target', '')}{ttype}")
+
+    if tree_records:
+        lines.append("")
+        lines.append("【按跳数汇总的可达实体】：")
+        total_reachable = 0
+        for row in tree_records:
+            h = row["hops"]
+            cnt = row["cnt"]
+            total_reachable += int(cnt or 0)
+            neighbors = row["neighbors"] or []
+            # 节点太多就截断展示前 10 个，提示还有多少
+            shown = neighbors[:10]
+            more = len(neighbors) - len(shown)
+            shown_str = "、".join(f"「{n}」" for n in shown)
+            more_str = f" …等 {cnt} 个实体" if more > 0 else f" 共 {cnt} 个实体"
+            lines.append(f"  · 第 {h} 跳：{shown_str}{more_str}")
+        lines.append("")
+        lines.append(f"合计：{max_hops} 跳以内共可达 {total_reachable} 个不同实体。")
+    else:
+        lines.append("")
+        if rt:
+            lines.append(f"未找到任何关联邻居：该实体没有包含「{rt}」的关系边，可更换 relation_type 或不填以查看全部关联。")
+        else:
+            lines.append("未找到任何关联邻居：该实体可能还没有关系边。")
+
+    return "\n".join(lines)
+
+
 # 全部工具列表
 ALL_TOOLS = [
     search_entities,
@@ -489,4 +706,5 @@ ALL_TOOLS = [
     list_entity_types,
     get_entities_by_type,
     get_causal_chain,
+    get_entity_neighborhood,
 ]

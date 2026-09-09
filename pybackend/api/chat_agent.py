@@ -56,6 +56,11 @@ SYSTEM_PROMPT = """你是一个知识图谱智能问答助手，可以查询知�
 - 用户问某个实体的详细信息 → 使用 get_entity_detail
 - 用户问某个名称的多条记录（同名实体有哪些类型/版本）→ 使用 get_entities_by_name，limit 按问题需要的条数自行决定
 - 用户问某个实体的关系 → 使用 get_entity_relations
+- 用户问"某实体的 2 跳/多跳相关实体""和 X 有关联的实体还有哪些""X 的关联圈子"（普通关系多跳扩展）
+  → 使用 get_entity_neighborhood，只填 start_entity，不填 end_entity（辐射模式），max_hops 按用户说的跳数填、未说则默认 2
+- 用户问"A 和 B 之间有什么关联""A 和 B 是怎么联系起来的""A 到 B 的关联路径"（非因果语义的连通性/中间桥接实体）
+  → 使用 get_entity_neighborhood，同时填 start_entity 和 end_entity（两点路径模式）
+  → 若工具提示未找到路径，可告知用户两者在当前跳数内无关联，不要改用其他工具反复尝试
 - 用户问"某事件导致了什么""引发了什么连锁反应""有哪些后续因果影响"（单个事件向外辐射）
   → 【前置步骤】先调用 search_entities 搜索该事件名称，从返回结果中筛选 type 以"事件"开头的事件实体的 canonicalName 作为 start_entity
   → 再调用 get_causal_chain，只填 start_entity，不填 end_entity（辐射模式）

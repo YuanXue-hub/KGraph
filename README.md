@@ -87,7 +87,7 @@ KGraph 是一个面向知识图谱构建、管理、训练和问答的一体式�
 - **实体关系管理**：CRUD 操作，分页展示
 - **模型训练**：训练任务管理、曲线监控、模型效果评估
 - **数据标注**：标注任务管理，支持 BIO 标签体系
-- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 8 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`get_entities_by_type`、`get_entities_by_name`、`get_causal_chain`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① 思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
+- **智能问答（LangGraph Agent · SSE 流式）**：基于 LangGraph v2 事件体系编排 Agent，内置 9 个图谱工具（`search_entities`、`get_entity_detail`、`get_entity_relations`、`get_graph_stats`、`list_entity_types`、`get_entities_by_type`、`get_entities_by_name`、`get_causal_chain`、`get_entity_neighborhood`）。通过 Python→Java→前端 全链路 SSE 增量推送，配合前端打字机缓冲队列实现：① 思考过程流式展示 ② 工具调用执行状态实时卡片 ③ 正式回答逐字 Markdown 渲染输出
 - **智能问答 · 模型选择与会话管理**：
   - 右下角模型选择器（Trae Work 风格）：模型清单由 `llm_model` 表维护（DeepSeek 系列，可扩展千问/GLM），`GET /api/chat/llm-models` 动态拉取；上次选择存 localStorage，首次使用默认 deepseek-chat
   - 图谱模型（顶部下拉）选择持久化 localStorage，刷新/切换菜单后自动恢复
@@ -556,8 +556,9 @@ Python 后端通过 `StreamingResponse` 发出标准 SSE 帧（`Cache-Control: n
 | `get_entities_by_type(entity_type, modelId, limit)` | 按实体类型查询实体列表（如「人物有哪些」「地点有什么」） | `MATCH (n:Entity {type: $type, modelId: $mid})` |
 | `get_entities_by_name(name, modelId, limit)` | 按名称精确查询同名多条记录（同名不同类型实体全量返回，条数由 LLM 决定） | `WHERE n.name = $name OR n.canonicalName = $name` |
 | `get_causal_chain(start_entity, end_entity?, direction, max_hops, modelId)` | 因果链查询：辐射模式（单事件多跳扩散）/ 两点路径模式（A→B 传导路径） | `MATCH (a)-[r:CAUSES*1..5]->(b)` BFS 分层 |
+| `get_entity_neighborhood(start_entity, end_entity?, max_hops, relation_type?, modelId)` | 通用多跳关联查询：辐射模式（多跳邻居树）/ 两点路径模式（A~B 最短关联路径），不限关系类型（覆盖普通关系 + 因果边），支持按关系名过滤 | `MATCH path = (s)-[rels*1..4]-(e)` 无向 BFS |
 
-> 提示：Agent 根据用户问题自主选择工具（支持多轮调用），例如「有哪些实体？」→ `search_entities`，「X 与谁有关？」→ `get_entity_relations`，「图谱里有什么统计信息？」→ `get_graph_stats`，「人物有哪些？」→ `get_entities_by_type`，「XX 有哪些类型的记录？」→ `get_entities_by_name`，「某事件引发了什么连锁反应？」→ `get_causal_chain`。同时通过 SYSTEM_PROMPT 约束工具调用上限（3 次）+ `recursion_limit=50` 兜底，避免 LangGraph 递归限制（默认 25 次）触发。
+> 提示：Agent 根据用户问题自主选择工具（支持多轮调用），例如「有哪些实体？」→ `search_entities`，「X 与谁有关？」→ `get_entity_relations`，「图谱里有什么统计信息？」→ `get_graph_stats`，「人物有哪些？」→ `get_entities_by_type`，「XX 有哪些类型的记录？」→ `get_entities_by_name`，「某事件引发了什么连锁反应？」→ `get_causal_chain`，「和 X 有关联的实体还有哪些？」→ `get_entity_neighborhood`。同时通过 SYSTEM_PROMPT 约束工具调用上限（3 次）+ `recursion_limit=50` 兜底，避免 LangGraph 递归限制（默认 25 次）触发。
 
 ---
 
