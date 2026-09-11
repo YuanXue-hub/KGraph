@@ -13,6 +13,23 @@ class ExtractionRequest(BaseModel):
     userId: Optional[int] = None   # 调用用户（Java 端注入，request_log 埋点归属）
 
 
+class EntityExtractRequest(BaseModel):
+    """阶段1 纯计算接口：只抽实体，不写库（对比实验/分层消融用）。"""
+    text: str
+    ontology: Optional[Dict[str, Any]] = None
+    llmModelId: Optional[int] = None
+    userId: Optional[int] = None
+
+
+class RelationExtractRequest(BaseModel):
+    """阶段2 纯计算接口：注入阶段1产物抽关系，不写库（对比实验/分层消融用）。"""
+    text: str
+    ontology: Optional[Dict[str, Any]] = None
+    llmModelId: Optional[int] = None
+    userId: Optional[int] = None
+    entityStage: Dict[str, Any]      # 阶段1输出（entities/timeAnchors/aliasMap/docTime 原样透传）
+
+
 class ExtractionResult(BaseModel):
     entities: List[Dict[str, Any]] = Field(default_factory=list)
     relations: List[Dict[str, Any]] = Field(default_factory=list)

@@ -13,7 +13,7 @@ LLM / KOS / DL / 结构化是四种完全独立的抽取方法，本模块只负
 from __future__ import annotations
 
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -34,9 +34,57 @@ from core.extraction_validator import (
 )
 from core.graph_writer import GraphWriter
 from core.llm_client import LLMClient
-from models.schemas import ExtractionRequest, ExtractionResult
+from models.schemas import (
+    EntityExtractRequest,
+    RelationExtractRequest,
+    ExtractionRequest,
+    ExtractionResult,
+)
 
 router = APIRouter()
+
+
+# ============================================================================
+# 公共：动态选模型 + 调用埋点（主链路与纯计算接口共用，逻辑与主链路原实现一致）
+# ============================================================================
+def _pick_llm_client(request: Request, llm_model_id: Optional[int]) -> LLMClient:
+    """llm_model 表 id 动态构造客户端，无效/未指定则返回服务默认。"""
+    if not llm_model_id:
+        return request.app.state.llm_client
+    try:
+        from utils.db.mysql_client import MysqlClient
+        row = MysqlClient().get_llm_model_by_id(int(llm_model_id))
+        if row and row.get("enabled"):
+            return LLMClient({
+                "model": {
+                    "model_name": row["model_name"],
+                    "api_key": row["api_key"],
+                    "base_url": row["base_url"],
+                    "timeout_sec": 300.0,
+                    "max_retries": 1,
+                }
+            })
+    except Exception:
+        import traceback
+        traceback.print_exc()
+    return request.app.state.llm_client
+
+
+def _log_call(user_id: Optional[int], llm_client: LLMClient,
+              tokens: int, dur_ms: int) -> None:
+    """按实际 LLM 调用逐条埋点（阶段1/阶段2 各 1 条，与评估按指标埋点口径一致）。"""
+    try:
+        from utils.db.mysql_client import MysqlClient
+        model_name = llm_client.model_name if hasattr(llm_client, "model_name") else "unknown"
+        MysqlClient().log_request(
+            user_id=user_id,
+            model_name=model_name,
+            total_tokens=tokens,
+            duration=dur_ms,
+            status="success",
+        )
+    except Exception:
+        pass
 
 
 # ============================================================================
@@ -84,44 +132,11 @@ def _to_api_payload(
 # ============================================================================
 @router.post("/api/extract", response_model=ExtractionResult)
 def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
-    llm_client: LLMClient = request.app.state.llm_client
-    # 抽取模型可指定（llm_model 表 id）：动态构造，无效则回退服务默认配置
-    if req.llmModelId:
-        try:
-            from utils.db.mysql_client import MysqlClient
-            row = MysqlClient().get_llm_model_by_id(int(req.llmModelId))
-            if row and row.get("enabled"):
-                llm_client = LLMClient({
-                    "model": {
-                        "model_name": row["model_name"],
-                        "api_key": row["api_key"],
-                        "base_url": row["base_url"],
-                        "timeout_sec": 300.0,
-                        "max_retries": 1,
-                    }
-                })
-        except Exception:
-            import traceback
-            traceback.print_exc()
+    llm_client = _pick_llm_client(request, req.llmModelId)
     graph_writer: GraphWriter = request.app.state.graph_writer
     text = (req.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="待抽取文本为空")
-
-    def _log_call(tokens: int, dur_ms: int):
-        """按实际 LLM 调用逐条埋点（阶段1/阶段2 各 1 条，与评估按指标埋点口径一致）。"""
-        try:
-            from utils.db.mysql_client import MysqlClient
-            model_name = llm_client.model_name if hasattr(llm_client, "model_name") else "unknown"
-            MysqlClient().log_request(
-                user_id=getattr(req, "userId", None),
-                model_name=model_name,
-                total_tokens=tokens,
-                duration=dur_ms,
-                status="success",
-            )
-        except Exception:
-            pass
 
     t_total = time.time()
     total_tokens = 0
@@ -136,7 +151,7 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     total_tokens += stage1.tokens
-    _log_call(stage1.tokens, int((time.time() - t_stage) * 1000))
+    _log_call(req.userId, llm_client, stage1.tokens, int((time.time() - t_stage) * 1000))
 
     # ---- 阶段2：关系抽取（实体表硬约束，可复用方法）----
     t_stage = time.time()
@@ -147,7 +162,7 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     total_tokens += tok2
-    _log_call(tok2, int((time.time() - t_stage) * 1000))
+    _log_call(req.userId, llm_client, tok2, int((time.time() - t_stage) * 1000))
 
     # ---- 组装 payload + 质量管道兜底（W1-W5：span 夹紧 / 时态交换 / 消歧 / DAG / 低置信标记）----
     payload = LlmExtractionPayload(
@@ -183,3 +198,124 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
         duration=duration_ms,
         writeCount=write_count,
     )
+
+
+# ============================================================================
+# 纯计算接口（不写库）：分层抽取，供对比实验/分层消融复用
+# ============================================================================
+def _rebuild_stage1(entity_stage: Dict[str, Any]) -> EntityStageResult:
+    """把阶段1 API 输出（dict）重建为 EntityStageResult（Pydantic 校验兜底）。"""
+    entities = [
+        ExtractedEntity(
+            mention=e["mention"],
+            canonicalName=e.get("name") or e.get("canonicalName"),
+            type=e["type"],
+            span=e["span"],
+        )
+        for e in entity_stage.get("entities", [])
+        if e.get("name") or e.get("canonicalName")
+    ]
+    anchors = [
+        TimeAnchor(
+            expr=a["expr"], type=a.get("type", "UNKNOWN"),
+            normISO=a.get("normISO"), precision=a.get("precision", "unknown"),
+            relativeAnchor=a.get("relativeAnchor"), span=a["span"],
+        )
+        for a in entity_stage.get("timeAnchors", [])
+    ]
+    return EntityStageResult(
+        entities=entities,
+        time_anchors=anchors,
+        alias_map=entity_stage.get("aliasMap", {}) or {},
+        doc_time=entity_stage.get("docTime"),
+        tokens=0,  # 阶段1 token 已在其端点记录，此处不重复计
+    )
+
+
+@router.post("/api/extract/entities")
+def extract_entities_api(req: EntityExtractRequest, request: Request) -> Dict[str, Any]:
+    """阶段1：只抽实体（含时间锚点/指代链归并），纯计算不写库。"""
+    llm_client = _pick_llm_client(request, req.llmModelId)
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="待抽取文本为空")
+
+    t0 = time.time()
+    rep = QualityReport()
+    try:
+        stage1 = extract_entities(
+            llm_client, text, ontology=req.ontology or None, rep=rep,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    _log_call(req.userId, llm_client, stage1.tokens, int((time.time() - t0) * 1000))
+
+    def _ent(e: ExtractedEntity):
+        return {"name": e.canonicalName, "mention": e.mention, "type": e.type,
+                "span": {"start": e.span.start, "end": e.span.end}}
+
+    def _anc(a: TimeAnchor):
+        return {"expr": a.expr, "type": a.type, "normISO": a.normISO,
+                "precision": a.precision, "relativeAnchor": a.relativeAnchor,
+                "span": {"start": a.span.start, "end": a.span.end}}
+
+    return {
+        "entities": [_ent(e) for e in stage1.entities],
+        "timeAnchors": [_anc(a) for a in stage1.time_anchors],
+        "aliasMap": stage1.alias_map,
+        "docTime": stage1.doc_time,
+        "qualityReport": [{"level": i.level, "code": i.code, "message": i.message}
+                          for i in rep.issues],
+        "tokenConsumed": stage1.tokens,
+        "duration": int((time.time() - t0) * 1000),
+    }
+
+
+@router.post("/api/extract/relations")
+def extract_relations_api(req: RelationExtractRequest, request: Request) -> Dict[str, Any]:
+    """阶段2：注入阶段1产物抽关系（实体表硬约束），含 W1-W5 质量管道，纯计算不写库。"""
+    llm_client = _pick_llm_client(request, req.llmModelId)
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="待抽取文本为空")
+    if not req.entityStage or not req.entityStage.get("entities"):
+        raise HTTPException(status_code=400, detail="entityStage 为空，请先调用 /api/extract/entities")
+
+    t0 = time.time()
+    rep = QualityReport()
+    stage1 = _rebuild_stage1(req.entityStage)
+    if not stage1.entities:
+        raise HTTPException(status_code=400, detail="entityStage.entities 解析失败")
+
+    try:
+        relations, tok2 = extract_relations(
+            llm_client, text, stage1, ontology=req.ontology or None, rep=rep,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    _log_call(req.userId, llm_client, tok2, int((time.time() - t0) * 1000))
+
+    # 质量管道 W1-W5（与主链路同规格：覆盖实体 span 修正 + 关系校验）
+    payload = LlmExtractionPayload(
+        docTime=stage1.doc_time,
+        entities=stage1.entities,
+        timeAnchors=stage1.time_anchors,
+        relations=relations,
+        causalEdges=[],
+    )
+    payload, rep2 = run_quality_pipeline(payload, text)
+    for i in rep2.issues:
+        rep.add(i.level, i.code, i.message)
+
+    api_dict = _to_api_payload(payload, rep)
+    return {
+        "entities": api_dict["entities"],       # W1/W3 可能修正实体，一并返回
+        "relations": api_dict["relations"],
+        "timeAnchors": api_dict["timeAnchors"],
+        "causalEdges": [],
+        "qualityReport": api_dict["qualityReport"],
+        "qualityStats": api_dict["qualityStats"],
+        "tokenConsumed": tok2,
+        "duration": int((time.time() - t0) * 1000),
+        "writeCount": {},                       # 纯计算：不写 Neo4j
+    }
