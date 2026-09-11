@@ -2246,8 +2246,8 @@ onMounted(() => {
 }
 
 .eval-radar {
-  width: 240px;
-  height: 200px;
+  width: 340px;
+  height: 220px;
   flex-shrink: 0;
 }
 
