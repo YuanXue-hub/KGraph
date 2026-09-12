@@ -67,6 +67,7 @@ KGraph 是一个面向知识图谱构建、管理、训练和问答的一体式�
 | 前端 | Vue 3 + Element Plus + Vite + TypeScript + marked（Markdown 渲染） | UI 交互、图可视化（G6）、图表展示（ECharts）、SSE 流式接收 + 打字机动效 |
 | Java 主服务 | Spring Boot + MyBatis-Plus + MySQL + Neo4j + MinIO + WebFlux（`Flux<ServerSentEvent>` SSE 代理） | 业务编排、权限管理、结构化抽取、图谱 CRUD、MinerU 文档解析调度、流式事件透传 |
 | Python 微服务 | FastAPI + OpenAI SDK + LangGraph（Agent 编排） + `StreamingResponse`（SSE） | LLM 抽取、KOS 抽取、深度学习抽取、模型训练、智能问答 Agent（流式工具调用） |
+| **MCP Server** | **MCP Python SDK（`mcp>=2.2`）** | **知识抽取 + 质量评估 Tool，供 Trae/Claude Desktop 等 LLM 客户端调用，支持 stdio/SSE/streamable-http 三种传输层** |
 | 外部服务 | MinerU v3.4.5（文档解析） | PDF/Word → Markdown 转换，独立进程运行 |
 
 ### 核心功能
@@ -94,6 +95,7 @@ KGraph 是一个面向知识图谱构建、管理、训练和问答的一体式�
   - 会话管理：新建/切换/删除会话，历史消息 MySQL 持久化 + Redis 缓存（次日 0 点过期）
   - 会话标题：首轮问答完成后异步调用 LLM 生成 ≤20 字标题（不截断），先发 `done` 恢复输入框、再补发 `title` 事件实时替换会话项标题；短路优化 + 规则兜底降级
 - **LLM 抽取质量评估**：抽取页"质量评估"Tab，支持从抽取历史选择结果与语料一键评估；内在指标（孤立实体率/平均度/证据覆盖率/低置信率等）+ LLM-as-Judge 抽样评估（G-Eval 风格，三元组忠实度/谓词合理性/双时态正确性/证据句有效性/实体边界正确性）
+- **MCP Server（LLM 客户端接入）**：将知识抽取和质量评估能力包装为 MCP Tool，支持 stdio/SSE/streamable-http 三种传输层。**薄包装零漂移**——直接 `import core.extraction_service` / `core.evaluation_core`，与主服务 HTTP 端点共用同一份实现，口径 100% 一致。运行期唯一外部依赖为 LLM API，可部署为 Docker 服务供远程 Agent 集群调用
 
 ---
 
@@ -127,6 +129,7 @@ KGraph 是一个面向知识图谱构建、管理、训练和问答的一体式�
 - Neo4j Python Driver
 - LangChain / LangGraph（智能问答 Agent 编排 + 工具调用生命周期事件）
 - langchain-openai（ChatOpenAI 流式）
+- **MCP Python SDK（`mcp>=2.2`，MCP Server 传输层与 Tool 注册）**
 
 ---
 
@@ -185,7 +188,8 @@ KGraph/
 │   │   ├── dl_extractor.py      # 深度学习抽取
 │   │   ├── trainer.py           # 模型训练
 │   │   ├── graph_writer.py      # Neo4j 写入
-│   │   └── extraction_validator.py  # 抽取校验 + 后处理补边
+│   │   ├── extraction_validator.py  # 抽取校验 + 后处理补边
+│   │   └── evaluation_core.py   # ⭐ 评估核心（内在指标 + G-Eval 裁判，无 FastAPI 依赖，HTTP/MCP 共用）
 │   ├── splitter/                # ⭐ 文本切分策略包
 │   │   ├── base.py              # Chunk 数据类 + SplitStrategy 抽象基类
 │   │   ├── fixed.py             # 定长滑窗分块
@@ -197,6 +201,7 @@ KGraph/
 │   ├── text_processor/          # 文本处理工具
 │   ├── config.example.json      # 配置模板
 │   ├── main.py                  # FastAPI 入口
+│   ├── mcp_server.py            # ⭐ MCP Server（kg_extract_full + kg_evaluate 两个 Tool）
 │   └── requirements.txt
 │
 ├── sql/                         # 数据库脚本
@@ -329,6 +334,64 @@ npm run dev
 ```
 
 前端启动在 `http://localhost:5173`
+
+### 9. 启动 MCP Server（可选，供 LLM 客户端调用）
+
+MCP Server 是独立进程，**不需要启动 Java 主服务或 Python 微服务**，运行期只依赖 LLM API。
+
+```bash
+cd pybackend
+
+# 方式一：stdio（推荐 Trae/Claude Desktop 本地接入，客户端自动拉起子进程）
+python mcp_server.py --transport stdio
+
+# 方式二：streamable-http（远程 Agent 集群 / Docker 部署）
+python mcp_server.py --transport streamable-http --host 0.0.0.0 --port 8003
+
+# 方式三：SSE（兼容旧客户端）
+python mcp_server.py --transport sse --host 0.0.0.0 --port 8003
+```
+
+#### Trae 配置示例（stdio 模式）
+
+Trae → 设置 → MCP → 手动添加（原始 JSON）：
+
+```json
+{
+  "mcpServers": {
+    "kgraph": {
+      "command": "/path/to/python3",
+      "args": ["/path/to/KGraph/pybackend/mcp_server.py", "--transport", "stdio"],
+      "cwd": "/path/to/KGraph/pybackend"
+    }
+  }
+}
+```
+
+#### Docker 部署（生产环境）
+
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY pybackend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir "mcp>=2.2,<3"
+COPY pybackend/ .
+EXPOSE 8003
+CMD ["python", "mcp_server.py", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8003"]
+```
+
+```bash
+docker build -t kgraph-mcp .
+docker run -d -p 8003:8003 -e DEEPSEEK_API_KEY=sk-xxx kgraph-mcp
+```
+
+#### 提供的 Tool
+
+| Tool | 说明 |
+|------|------|
+| `kg_extract_full` | 两阶段 LLM 抽取 + W1-W5 质量管道，输出实体/关系/时间锚点 |
+| `kg_evaluate` | 内在指标 + G-Eval 五维 LLM-as-Judge 裁判，对抽取结果打分 |
 
 ---
 
