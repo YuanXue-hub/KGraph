@@ -59,9 +59,17 @@ export class G6Adapter implements GraphAdapter {
         labelCfg: { style: { fill: '#909399', fontSize: 10 } }
       },
       nodeStateStyles: {
+        // 优先级从低到高：dim < highlight < hover < selected（后者覆盖前者同键样式）
+        // 注意：状态名不可与 G6 图形属性重名（如 path 是边的几何属性，会导致渲染崩溃）
+        dim: { opacity: 0.25 },
+        highlight: { stroke: '#e6a23c', lineWidth: 3, shadowColor: '#e6a23c', shadowBlur: 8 },
+        hover: { stroke: '#409eff', lineWidth: 3, shadowColor: '#409eff', shadowBlur: 6 },
         selected: { stroke: '#409eff', lineWidth: 3, shadowColor: '#409eff', shadowBlur: 10 }
       },
       edgeStateStyles: {
+        dim: { opacity: 0.08 },
+        highlight: { stroke: '#e6a23c', lineWidth: 3 },
+        hover: { stroke: '#409eff', lineWidth: 2 },
         selected: { stroke: '#409eff', lineWidth: 2.5 }
       }
     })
@@ -82,6 +90,29 @@ export class G6Adapter implements GraphAdapter {
     this.graph.on('canvas:click', () => {
       this.options.handlers.onCanvasClick?.()
     })
+
+    // hover 选中效果：鼠标触碰节点/边时高亮，移开恢复
+    this.graph.on('node:mouseenter', (evt: any) => {
+      this._setItemHover(evt.item, true)
+    })
+    this.graph.on('node:mouseleave', (evt: any) => {
+      this._setItemHover(evt.item, false)
+    })
+    this.graph.on('edge:mouseenter', (evt: any) => {
+      this._setItemHover(evt.item, true)
+    })
+    this.graph.on('edge:mouseleave', (evt: any) => {
+      this._setItemHover(evt.item, false)
+    })
+  }
+
+  private _setItemHover(item: any, hovered: boolean) {
+    if (!this.graph || !item) return
+    try {
+      this.graph.setItemState(item, 'hover', hovered)
+    } catch {
+      /* empty */
+    }
   }
 
   setData(nodes: GraphNode[], edges: GraphEdge[]): void {
@@ -98,7 +129,8 @@ export class G6Adapter implements GraphAdapter {
 
   selectNode(nodeId: string): void {
     if (!this.graph) return
-    this.clearSelection()
+    // 仅清除选中态，保留路径高亮（点击路径上的节点查看详情时路径不消失）
+    this._clearItemsState('selected')
     try {
       this.graph.setItemState(nodeId, 'selected', true)
     } catch {
@@ -108,7 +140,7 @@ export class G6Adapter implements GraphAdapter {
 
   selectEdge(edgeId: string): void {
     if (!this.graph) return
-    this.clearSelection()
+    this._clearItemsState('selected')
     try {
       this.graph.setItemState(edgeId, 'selected', true)
     } catch {
@@ -118,16 +150,73 @@ export class G6Adapter implements GraphAdapter {
 
   clearSelection(): void {
     if (!this.graph) return
+    this._clearItemsState('selected')
+    this.clearPathHighlight()
+  }
+
+  private _clearItemsState(state: string) {
     this.currentNodes.forEach((n) => {
-      try { this.graph.setItemState(n.id, 'selected', false) } catch { /* empty */ }
+      try { this.graph.setItemState(n.id, state, false) } catch { /* empty */ }
     })
     this.currentEdges.forEach((e) => {
-      try { this.graph.setItemState(e.id, 'selected', false) } catch { /* empty */ }
+      try { this.graph.setItemState(e.id, state, false) } catch { /* empty */ }
+    })
+  }
+
+  highlightPath(nodeIds: string[], edgeIds: string[]): void {
+    if (!this.graph) return
+    this.clearPathHighlight()
+    const nodeSet = new Set(nodeIds)
+    const edgeSet = new Set(edgeIds)
+    this.currentNodes.forEach((n) => {
+      const onPath = nodeSet.has(n.id)
+      try {
+        // 状态样式只作用于 keyShape（圆/线），标签需单独同步透明度，
+        // 否则压暗后图形消失、文字全亮漂浮
+        this.graph.updateItem(n.id, { labelCfg: { style: { opacity: onPath ? 1 : 0.25 } } })
+        this.graph.setItemState(n.id, onPath ? 'highlight' : 'dim', true)
+      } catch { /* empty */ }
+    })
+    this.currentEdges.forEach((e) => {
+      const onPath = edgeSet.has(e.id)
+      try {
+        this.graph.updateItem(e.id, { labelCfg: { style: { opacity: onPath ? 1 : 0.1 } } })
+        this.graph.setItemState(e.id, onPath ? 'highlight' : 'dim', true)
+      } catch { /* empty */ }
+    })
+  }
+
+  clearPathHighlight(): void {
+    if (!this.graph) return
+    this.currentNodes.forEach((n) => {
+      try {
+        this.graph.updateItem(n.id, { labelCfg: { style: { opacity: 1 } } })
+        this.graph.setItemState(n.id, 'highlight', false)
+        this.graph.setItemState(n.id, 'dim', false)
+      } catch { /* empty */ }
+    })
+    this.currentEdges.forEach((e) => {
+      try {
+        this.graph.updateItem(e.id, { labelCfg: { style: { opacity: 1 } } })
+        this.graph.setItemState(e.id, 'highlight', false)
+        this.graph.setItemState(e.id, 'dim', false)
+      } catch { /* empty */ }
     })
   }
 
   fitView(padding: number = 20): void {
     this.graph?.fitView(padding)
+  }
+
+  fitViewAfterLayout(padding: number = 60): void {
+    if (!this.graph) return
+    const doFit = () => {
+      try { this.graph.fitView(padding) } catch { /* empty */ }
+    }
+    // G6 力导向布局动画收敛后触发 afterlayout；用 once 只触发一次
+    this.graph.once('afterlayout', doFit)
+    // 兜底：若 afterlayout 未触发（如布局已完成或无动画），1.5s 后强制 fitView
+    setTimeout(doFit, 1500)
   }
 
   resize(width?: number, height?: number): void {

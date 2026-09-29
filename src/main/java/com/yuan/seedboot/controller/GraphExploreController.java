@@ -2,6 +2,7 @@ package com.yuan.seedboot.controller;
 
 import com.yuan.seedboot.common.BaseResponse;
 import com.yuan.seedboot.common.ResultUtils;
+import com.yuan.seedboot.config.PythonServiceClient;
 import com.yuan.seedboot.exception.ErrorCode;
 import com.yuan.seedboot.exception.ThrowUtils;
 import com.yuan.seedboot.service.Neo4jService;
@@ -20,6 +21,9 @@ public class GraphExploreController {
 
     @Resource
     private Neo4jService neo4jService;
+
+    @Resource
+    private PythonServiceClient pythonServiceClient;
 
     @GetMapping("/nodes")
     @Operation(summary = "获取节点与边（按 modelId, 支持 limit）")
@@ -55,5 +59,19 @@ public class GraphExploreController {
         ThrowUtils.throwIf(modelId <= 0, ErrorCode.PARAMS_ERROR);
         Map<String, Object> stats = neo4jService.getStats(modelId);
         return ResultUtils.success(stats);
+    }
+
+    @GetMapping("/path")
+    @Operation(summary = "最短路径检索（起点→目标，BFS，透传 Python 微服务）")
+    public BaseResponse<Map<String, Object>> getPath(long modelId,
+                                                     @RequestParam String fromId,
+                                                     @RequestParam String toId,
+                                                     @RequestParam(defaultValue = "15") Integer maxHops) {
+        ThrowUtils.throwIf(modelId <= 0, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(fromId == null || fromId.isBlank(), ErrorCode.PARAMS_ERROR, "起点不能为空");
+        ThrowUtils.throwIf(toId == null || toId.isBlank(), ErrorCode.PARAMS_ERROR, "目标不能为空");
+        ThrowUtils.throwIf(maxHops < 1 || maxHops > 20, ErrorCode.PARAMS_ERROR, "maxHops 范围 1-20");
+        Map<String, Object> data = pythonServiceClient.graphPath(String.valueOf(modelId), fromId, toId, maxHops);
+        return ResultUtils.success(data);
     }
 }

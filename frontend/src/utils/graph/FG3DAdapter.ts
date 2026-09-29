@@ -13,6 +13,7 @@ const BG_COLOR = 0xf7f9fc
 const LINK_COLOR = '#c3cbd9'
 const LINK_COLOR_ADJ = '#165dff'
 const LINK_COLOR_SEL = '#0e42d2'
+const LINK_COLOR_PATH = '#e6a23c'
 
 export class FG3DAdapter implements GraphAdapter {
   readonly kind: GraphKind = '3d'
@@ -24,6 +25,10 @@ export class FG3DAdapter implements GraphAdapter {
   private currentEdges: GraphEdge[] = []
   private selectedNodeId: string | null = null
   private selectedEdgeIdx: number | null = null
+  private hoverNodeId: string | null = null
+  private hoverEdgeIdx: number | null = null
+  private pathNodeIds: Set<string> | null = null
+  private pathEdgeIdx: Set<number> | null = null
   private rafTicking = false
   private labelSprites = new Map<string, THREE.Sprite>()
   private linkMats = new Map<any, THREE.LineBasicMaterial>()
@@ -118,6 +123,28 @@ export class FG3DAdapter implements GraphAdapter {
         this.selectEdge(this.currentEdges[idx].id)
         this.options.handlers.onEdgeClick?.(this.currentEdges[idx])
       }
+    })
+
+    // hover 选中效果：鼠标触碰节点/边时记录目标，视觉由每帧 _applySelectionAndFocus 应用
+    graph.onNodeHover((node: any) => {
+      this.hoverNodeId = node ? (node.id as string) : null
+    })
+
+    graph.onLinkHover((link: any) => {
+      if (!link) {
+        this.hoverEdgeIdx = null
+        return
+      }
+      // 与 onLinkClick 相同的定位策略：优先按 id 匹配
+      let idx = this.currentEdges.findIndex((e) => e.id === link.id)
+      if (idx < 0) {
+        const sId = typeof link.source === 'object' ? link.source.id : link.source
+        const tId = typeof link.target === 'object' ? link.target.id : link.target
+        idx = this.currentEdges.findIndex(
+          (e) => e.source === sId && e.target === tId && (e.label || '') === (link.label || '')
+        )
+      }
+      this.hoverEdgeIdx = idx >= 0 ? idx : null
     })
 
     // 背景点击 → 取消选中
@@ -326,6 +353,10 @@ export class FG3DAdapter implements GraphAdapter {
     if (!this.instance) return
     this.selectedNodeId = null
     this.selectedEdgeIdx = null
+    this.hoverNodeId = null
+    this.hoverEdgeIdx = null
+    this.pathNodeIds = null
+    this.pathEdgeIdx = null
     this.labelSprites.clear()
     this.linkMats.forEach((m) => m.dispose())
     this.linkMats.clear()
@@ -444,6 +475,7 @@ export class FG3DAdapter implements GraphAdapter {
       })
     }
     const hasSelected = !!this.selectedNodeId || this.selectedEdgeIdx !== null
+    const hasPath = !!this.pathNodeIds
     const tNow = performance.now() / 1000
 
     nodes.forEach((n) => {
@@ -454,8 +486,12 @@ export class FG3DAdapter implements GraphAdapter {
       const coreMat = core.material as THREE.MeshPhongMaterial
       const glowIn = obj.children[1] as THREE.Sprite | undefined
       const glowOut = obj.children[2] as THREE.Sprite | undefined
-      const dimmed = hasSelected && !adjacentNodeIds.has(n.id)
+      // 路径高亮优先：压暗非路径节点；无路径时退回选中聚焦压暗
+      const dimmed = hasPath
+        ? !this.pathNodeIds!.has(n.id)
+        : hasSelected && !adjacentNodeIds.has(n.id)
       const selected = n.id === this.selectedNodeId
+      const hovered = n.id === this.hoverNodeId
 
       // 微呼吸：光晕轻微律动，营造粒子场流动感
       if (!this.twinklePhase.has(n.id)) this.twinklePhase.set(n.id, Math.random() * Math.PI * 2)
@@ -467,24 +503,25 @@ export class FG3DAdapter implements GraphAdapter {
         coreMat.opacity = NORMAL_ALPHA
         core.scale.setScalar(1.0)
       } else {
-        coreMat.opacity = dimmed ? DIM_ALPHA : NORMAL_ALPHA
+        // hover 时即使处于压暗态也回亮一部分，提示可点击
+        coreMat.opacity = dimmed ? (hovered ? 0.7 : DIM_ALPHA) : NORMAL_ALPHA
         core.scale.setScalar(1.0)
       }
 
-      // 双层光晕：选中放大增亮，非关联压暗（浅色底用较低基准透明度）
+      // 双层光晕：选中/悬停放大增亮，非关联压暗（浅色底用较低基准透明度）
       if (glowIn) {
         const gm = glowIn.material as THREE.SpriteMaterial
         const base = (glowIn.userData.baseScale as number) || glowIn.scale.x
-        const k = selected ? 1.25 : 1
-        const f = selected ? 0.8 : dimmed ? 0.06 : 0.5
+        const k = selected ? 1.25 : hovered ? 1.12 : 1
+        const f = selected ? 0.8 : hovered ? 0.62 : dimmed ? 0.06 : 0.5
         gm.opacity = f * twinkle
         glowIn.scale.set(base * k * twinkle, base * k * twinkle, 1)
       }
       if (glowOut) {
         const gm = glowOut.material as THREE.SpriteMaterial
         const base = (glowOut.userData.baseScale as number) || glowOut.scale.x
-        const k = selected ? 1.3 : 1
-        const f = selected ? 0.6 : dimmed ? 0.04 : 0.25
+        const k = selected ? 1.3 : hovered ? 1.16 : 1
+        const f = selected ? 0.6 : hovered ? 0.42 : dimmed ? 0.04 : 0.25
         gm.opacity = f * twinkle
         glowOut.scale.set(base * k * twinkle, base * k * twinkle, 1)
       }
@@ -492,7 +529,11 @@ export class FG3DAdapter implements GraphAdapter {
       // 标签透明度同步
       const labelSprite = this.labelSprites.get(n.id)
       if (labelSprite) {
-        ;(labelSprite.material as THREE.SpriteMaterial).opacity = dimmed ? 0.08 : 1.0
+        ;(labelSprite.material as THREE.SpriteMaterial).opacity = dimmed
+          ? hovered
+            ? 0.55
+            : 0.08
+          : 1.0
       }
     })
 
@@ -509,14 +550,41 @@ export class FG3DAdapter implements GraphAdapter {
       if (lineObj.material !== mat) lineObj.material = mat
       const arrowObj = l.__arrowObj as THREE.Mesh | undefined
       const arrowMat = arrowObj ? (arrowObj.material as THREE.MeshLambertMaterial) : null
+      const hoveredEdge = this.hoverEdgeIdx === i
+      const onPath = !!this.pathEdgeIdx && this.pathEdgeIdx.has(i)
       if (this.selectedEdgeIdx === i) {
         mat.color = new THREE.Color(LINK_COLOR_SEL)
         mat.opacity = 1.0
         if (arrowMat) arrowMat.color = new THREE.Color(LINK_COLOR_SEL)
+      } else if (onPath) {
+        // 路径高亮：琥珀色 + 全亮，箭头同步
+        mat.color = new THREE.Color(LINK_COLOR_PATH)
+        mat.opacity = 1.0
+        if (arrowMat) {
+          arrowMat.color = new THREE.Color(LINK_COLOR_PATH)
+          arrowMat.transparent = true
+          arrowMat.opacity = 1.0
+        }
+      } else if (hoveredEdge) {
+        // hover 选中效果：边变品牌蓝并提亮，箭头同步
+        mat.color = new THREE.Color(LINK_COLOR_SEL)
+        mat.opacity = 0.95
+        if (arrowMat) {
+          arrowMat.color = new THREE.Color(LINK_COLOR_SEL)
+          arrowMat.transparent = true
+          arrowMat.opacity = 0.95
+        }
       } else {
         const isAdj = this.selectedNodeId !== null && adjacentLinkIdx.has(i)
         mat.color = new THREE.Color(isAdj ? LINK_COLOR_ADJ : LINK_COLOR)
-        mat.opacity = hasSelected ? (isAdj ? 0.9 : 0.08) : 0.45
+        // 路径激活时非路径边整体压暗，其余情况按选中聚焦逻辑
+        mat.opacity = this.pathEdgeIdx
+          ? 0.05
+          : hasSelected
+            ? isAdj
+              ? 0.9
+              : 0.08
+            : 0.45
         if (arrowMat) arrowMat.opacity = mat.opacity
       }
     })
@@ -537,10 +605,31 @@ export class FG3DAdapter implements GraphAdapter {
   clearSelection(): void {
     this.selectedNodeId = null
     this.selectedEdgeIdx = null
+    this.clearPathHighlight()
+  }
+
+  highlightPath(nodeIds: string[], edgeIds: string[]): void {
+    this.pathNodeIds = new Set(nodeIds)
+    const idxSet = new Set<number>()
+    edgeIds.forEach((eid) => {
+      const idx = this.currentEdges.findIndex((e) => e.id === eid)
+      if (idx >= 0) idxSet.add(idx)
+    })
+    this.pathEdgeIdx = idxSet
+  }
+
+  clearPathHighlight(): void {
+    this.pathNodeIds = null
+    this.pathEdgeIdx = null
   }
 
   fitView(padding: number = 40): void {
     this.instance?.zoomToFit(500, padding)
+  }
+
+  fitViewAfterLayout(padding: number = 60): void {
+    // 3D 力仿真无 afterlayout 事件，等待仿真初步收敛后再 zoomToFit
+    setTimeout(() => this.fitView(padding), 800)
   }
 
   resize(width?: number, height?: number): void {
@@ -571,6 +660,10 @@ export class FG3DAdapter implements GraphAdapter {
     this.currentEdges = []
     this.selectedNodeId = null
     this.selectedEdgeIdx = null
+    this.hoverNodeId = null
+    this.hoverEdgeIdx = null
+    this.pathNodeIds = null
+    this.pathEdgeIdx = null
     this.labelSprites.clear()
     this.linkMats.forEach((m) => m.dispose())
     this.linkMats.clear()

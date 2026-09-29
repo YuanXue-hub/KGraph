@@ -245,6 +245,45 @@ public class PythonServiceClient {
     }
 
     /**
+     * 调用 Python 图谱最短路径检索接口（BFS / shortestPath）
+     *
+     * @param modelId 图谱模型 id
+     * @param fromId  起点节点 elementId
+     * @param toId    目标节点 elementId
+     * @param maxHops 最大跳数（1-20）
+     * @return Python 响应 JSON: {found, hops, nodes:[], edges:[]} 或 {found:false, reason}
+     */
+    public JSONObject graphPath(String modelId, String fromId, String toId, Integer maxHops) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("modelId", modelId);
+        params.put("fromId", fromId);
+        params.put("toId", toId);
+        params.put("maxHops", maxHops);
+        String url = pythonServiceUrl + "/api/graph/path";
+        log.info("调用 Python 路径检索服务, url={}, modelId={}", url, modelId);
+
+        try (HttpResponse response = HttpRequest.get(url)
+                .form(params)
+                .timeout(60_000)
+                .execute()) {
+            String respBody = response.body();
+            if (!response.isOk()) {
+                log.error("Python 路径检索服务返回失败, status={}, body={}", response.getStatus(), respBody);
+                String detail = StrUtil.blankToDefault(StrUtil.sub(respBody, 0, 200), "");
+                throw new BusinessException(ErrorCode.OPERATION_ERROR,
+                        "Python 路径检索服务返回失败: " + response.getStatus() + " " + detail);
+            }
+            return JSONUtil.parseObj(respBody);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("调用 Python 路径检索服务异常, url={}", url, e);
+            throw new BusinessException(ErrorCode.OPERATION_ERROR,
+                    "调用 Python 路径检索服务异常: " + e.getMessage());
+        }
+    }
+
+    /**
      * 通用 POST 请求封装
      */
     private JSONObject doPost(String url, Map<String, Object> payload, Long modelId, String type) {

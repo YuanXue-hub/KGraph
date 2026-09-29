@@ -529,6 +529,13 @@ export const exploreApi = {
   },
   stats(modelId: number | string) {
     return request({ url: '/explore/stats', method: 'get', params: { modelId } })
+  },
+  path(modelId: number | string, fromId: string, toId: string, maxHops: number = 15) {
+    return request({
+      url: '/explore/path',
+      method: 'get',
+      params: { modelId, fromId, toId, maxHops }
+    })
   }
 }
 

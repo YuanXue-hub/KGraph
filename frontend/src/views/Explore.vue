@@ -159,6 +159,63 @@
               <div class="detail-endpoint">{{ selectedItem.targetName || selectedItem.target }}</div>
             </div>
           </template>
+
+          <!-- 节点特有：路径检索（当前节点 → 目标节点，BFS 最短路） -->
+          <template v-if="selectedItem.kind === 'node'">
+            <div class="detail-section">
+              <div class="detail-section-title">路径检索</div>
+              <div class="path-form">
+                <div class="path-row">
+                  <span class="path-label">起点</span>
+                  <span class="path-node" :title="selectedItem.name">{{ selectedItem.name }}</span>
+                </div>
+                <div class="path-row">
+                  <span class="path-label">目标</span>
+                  <el-select
+                    v-model="pathTarget"
+                    filterable
+                    allow-create
+                    default-first-option
+                    placeholder="输入或选择目标节点"
+                    size="small"
+                    class="path-target"
+                  >
+                    <el-option
+                      v-for="opt in pathOptions"
+                      :key="opt.id"
+                      :label="opt.label"
+                      :value="opt.label"
+                    />
+                  </el-select>
+                </div>
+                <div class="path-actions">
+                  <el-button size="small" type="primary" :loading="pathLoading" @click="findPath">
+                    查询路径
+                  </el-button>
+                  <el-button v-if="pathResult" size="small" @click="clearPath">清除高亮</el-button>
+                </div>
+                <!-- 路径链回显 -->
+                <div v-if="pathResult" class="path-chain">
+                  <div class="path-chain-header">最短路径 · 共 {{ pathResult.hops }} 跳</div>
+                  <div class="path-chain-body">
+                    <template v-for="(hop, i) in pathResult.chain" :key="i">
+                      <span class="chain-node" :style="{ color: hop.fromColor }">{{ hop.from }}</span>
+                      <span class="chain-rel">
+                        <span class="chain-rel-label">{{ hop.label }}</span>
+                        <span class="chain-arrow">{{ hop.arrow }}</span>
+                      </span>
+                      <span
+                        v-if="i === pathResult.chain.length - 1"
+                        class="chain-node"
+                        :style="{ color: hop.toColor }"
+                      >{{ hop.to }}</span>
+                    </template>
+                    <span v-if="!pathResult.chain.length" class="chain-empty">起点即目标</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
         <div class="detail-empty" v-else>
           <el-empty description="点击节点或关系查看详情" :image-size="80" />
@@ -208,6 +265,19 @@ const stats = ref<Stats | null>(null)
 const graphLoading = ref(false)
 const selectedItem = ref<DetailItem | null>(null)
 const graphKind = ref<GraphKind>('2d')
+
+// 路径检索（BFS 最短路）
+interface PathHop {
+  from: string
+  fromColor: string
+  label: string
+  arrow: string
+  to: string
+  toColor: string
+}
+const pathTarget = ref('')
+const pathLoading = ref(false)
+const pathResult = ref<{ hops: number; chain: PathHop[] } | null>(null)
 
 const graphRef = ref<HTMLElement>()
 const pieRef = ref<HTMLElement>()
@@ -281,6 +351,8 @@ async function loadProjectsAndModels() {
 async function onModelChange() {
   if (!modelId.value) return
   selectedItem.value = null
+  pathResult.value = null
+  pathTarget.value = ''
   await loadStats()
   await loadInitialNodes()
 }
@@ -446,6 +518,114 @@ function selectEdgeFromModel(model: GraphEdge) {
 function clearSelection() {
   adapter?.clearSelection()
   selectedItem.value = null
+  pathResult.value = null
+}
+
+// ==================== 路径检索（BFS 最短路） ====================
+
+// 目标节点候选：画布全部节点（排除当前节点）
+const pathOptions = computed(() => {
+  const selfId = selectedItem.value?.kind === 'node' ? selectedItem.value.id : ''
+  return Array.from(nodeSet.values())
+    .filter((n) => n.id !== selfId)
+    .map((n) => ({ id: n.id, label: n.label }))
+})
+
+/** 解析目标节点 id：画布精确匹配 → 后端搜索兜底（画布可能是子图） */
+async function resolveTargetId(name: string): Promise<string | undefined> {
+  const local = Array.from(nodeSet.values()).find((n) => n.label === name)
+  if (local) return local.id
+  if (!modelId.value) return undefined
+  try {
+    const res = await exploreApi.search(modelId.value, name)
+    const nodes = res.data?.nodes || []
+    if (nodes.length) return String(nodes[0].elementId ?? nodes[0].id)
+  } catch {
+    /* 搜索失败走未命中提示 */
+  }
+  return undefined
+}
+
+async function findPath() {
+  const current = selectedItem.value
+  if (!modelId.value || current?.kind !== 'node') return
+  const target = (pathTarget.value || '').trim()
+  if (!target) {
+    ElMessage.warning('请输入或选择目标节点')
+    return
+  }
+  if (target === (current.name || current.label)) {
+    // 起点即目标：0 跳路径
+    pathResult.value = { hops: 0, chain: [] }
+    adapter?.highlightPath([current.id], [])
+    return
+  }
+  const targetId = await resolveTargetId(target)
+  if (!targetId) {
+    ElMessage.warning('未找到目标节点')
+    return
+  }
+  pathLoading.value = true
+  try {
+    const res = await exploreApi.path(modelId.value, current.id, targetId)
+    const data = res.data || {}
+    if (!data.found) {
+      ElMessage.warning(data.reason || '两节点间不存在可达路径')
+      return
+    }
+    // 合并路径节点/边进画布（画布可能是子图，路径可能经过未加载节点），再高亮
+    const pathNodes: any[] = data.nodes || []
+    const pathEdges: any[] = data.edges || []
+    const nodeIds: string[] = []
+    pathNodes.forEach((n) => {
+      const id = String(n.elementId ?? n.id)
+      nodeIds.push(id)
+      if (!nodeSet.has(id)) nodeSet.set(id, transformNode(n))
+    })
+    const edgeIds: string[] = []
+    pathEdges.forEach((e) => {
+      const key = `${e.source}-${e.target}-${e.label || ''}`
+      if (!edgeSet.has(key)) edgeSet.set(key, transformEdge(e, key))
+      edgeIds.push(key)
+    })
+    refreshGraph()
+    adapter?.highlightPath(nodeIds, edgeIds)
+    pathResult.value = {
+      hops: Number(data.hops ?? edgeIds.length),
+      chain: buildChain(pathNodes, pathEdges)
+    }
+    // 等待力导向布局收敛后再自适应画布，避免动画期间 fitView 不准
+    adapter?.fitViewAfterLayout(60)
+  } finally {
+    pathLoading.value = false
+  }
+}
+
+/** 组装路径链回显项：按遍历顺序 A -[谓词]- B，箭头方向对齐边的存储方向 */
+function buildChain(pathNodes: any[], pathEdges: any[]): PathHop[] {
+  const chain: PathHop[] = []
+  for (let i = 0; i < pathEdges.length; i++) {
+    const a = pathNodes[i]
+    const b = pathNodes[i + 1]
+    const e = pathEdges[i]
+    if (!a || !b) break
+    const aId = String(a.elementId ?? a.id)
+    chain.push({
+      from: a.name || a.label || aId,
+      fromColor: getColorByType(a.type || a.group),
+      label: e.label || '关联',
+      arrow: e.source === aId ? '→' : '←',
+      to: b.name || b.label || String(b.elementId ?? b.id),
+      toColor: getColorByType(b.type || b.group)
+    })
+  }
+  return chain
+}
+
+function clearPath() {
+  pathResult.value = null
+  pathTarget.value = ''
+  adapter?.clearPathHighlight()
 }
 
 function refreshGraph() {
@@ -498,6 +678,7 @@ async function handleSearch() {
     nodeSet.clear()
     edgeSet.clear()
     selectedItem.value = null
+    pathResult.value = null
     nodes.forEach((n: any) => {
       const id = String(n.elementId ?? n.id)
       nodeSet.set(id, transformNode(n))
@@ -515,6 +696,8 @@ async function handleSearch() {
 
 async function reloadGraph() {
   selectedItem.value = null
+  pathResult.value = null
+  pathTarget.value = ''
   await loadInitialNodes()
 }
 
@@ -976,5 +1159,96 @@ onBeforeUnmount(() => {
   padding: 8px 12px;
   border-radius: var(--r-md);
   word-break: break-all;
+}
+
+/* 路径检索 */
+.path-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.path-label {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  width: 28px;
+}
+
+.path-node {
+  color: var(--text-1);
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.path-target {
+  flex: 1;
+}
+
+.path-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.path-chain {
+  margin-top: 4px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+}
+
+.path-chain-header {
+  font-size: 12px;
+  color: var(--text-3);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.path-chain-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.chain-node {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.chain-rel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+}
+
+.chain-rel-label {
+  font-size: 11px;
+  background: var(--brand-primary-soft);
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  color: var(--text-2);
+}
+
+.chain-arrow {
+  color: #e6a23c;
+  font-weight: 700;
+}
+
+.chain-empty {
+  color: var(--text-3);
+  font-size: 13px;
 }
 </style>

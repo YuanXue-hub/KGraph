@@ -60,8 +60,14 @@ export interface GraphAdapter {
   selectEdge(edgeId: string): void
   /** 清除所有选中态 */
   clearSelection(): void
+  /** 路径高亮：高亮 nodeIds/edgeIds 并压暗其余元素（保留当前选中态） */
+  highlightPath(nodeIds: string[], edgeIds: string[]): void
+  /** 仅清除路径高亮（不影响选中态） */
+  clearPathHighlight(): void
   /** 自适应画布，padding 像素 */
   fitView(padding?: number): void
+  /** 等待布局收敛后再自适应画布（路径检索后调用，避免力导向动画期间 fitView 不准） */
+  fitViewAfterLayout(padding?: number): void
   /** 手动调整尺寸（容器 resize 后调用） */
   resize(width?: number, height?: number): void
   /** 销毁 */
