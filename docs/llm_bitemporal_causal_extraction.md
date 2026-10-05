@@ -46,7 +46,7 @@
 └──────────────────────┬───────────────────────────────────────┘
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ Step 4 · 写入 Neo4j（graph_writer.write_llm_extracted）          │
+│ Step 4 · 写入 Neo4j（graph_writer.write_llm_extracted）                       │
 │   实体 MERGE（保留所有 mentions）                                 │
 │   关系 CREATE（**不 MERGE**，时态版本化累积）                      │
 │   因果边 CREATE [:CAUSES]（独立关系类型，不混在 :RELATION）        │
@@ -197,7 +197,7 @@ T1 已识别的事件类实体：
 
 ## 7. Neo4j 落盘设计
 
-文件：[`core/graph_writer.py → write_llm_extracted()`](file:///Users/Yuan/xy_workspace/2.projects/java/KGraph/pybackend/core/graph_writer.py#L112-L292)
+文件：[`core/graph_writer.py → write_llm_extracted()`](file:///Users/Yuan/xy_workspace/2.projects/java/KGraph/pybackend/core/graph_writer.py#L134-L345)
 
 ### 7.1 核心差异（和 KOS/DL 老 `write()` 的对比）
 
@@ -357,7 +357,7 @@ CREATE (ca)-[c:CAUSES {direction:'FORWARD', signalWord:'导致', vt_order:'CAUSE
 | `core/extraction_schema.py` | **新增** | Pydantic 结构 + 阈值常量（单源） |
 | `core/prompt_builder.py` | **重写** | T1/T2 两阶段 Prompt，含先验注入 + Few-Shot + 强 JSON 约束 |
 | `core/extraction_validator.py` | **新增** | W1~W5 质量校验墙 + QualityReport 语义 |
-| `core/graph_writer.py` | **新增方法**（老 `write()` 不动） | `write_llm_extracted()` 双时态 + 因果 + 时态版本化 CREATE |
+| `core/graph_writer.py` | **类重命名**（老 `write()` 不动） | `write_llm_extracted()` 双时态 + 因果 + 时态版本化 CREATE |
 | `models/schemas.py` | 扩展字段 | ExtractionRequest 新增 `kosConfig/dlConfig/docId/docMetadata`；ExtractionResult 新增 `timeAnchors/causalEdges/qualityReport/qualityStats/tokenConsumed/duration/writeCount` |
 | `api/extraction.py` | **重构主流程**（KOS/DL/结构化三分支零改动） | `/api/extract` LLM 分支走 T1→校验→T2→校验→写库；提供 `_collect_prior_entities` 只读先验 |
 | `scripts/test_llm_extraction_quality.py` | **新增** | 离线端到端自测脚本（7 个断言全通过） |

@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from neo4j import GraphDatabase
 
@@ -58,7 +58,7 @@ def _entity_extra_label(etype: str) -> str:
 
 
 class GraphWriter:
-    """Neo4j 图写入器。使用 config.json 中的 neo4j 配置连接。"""
+    """图谱构建器：将抽取结果写入 Neo4j。使用 config.json 中的 neo4j 配置连接。"""
 
     def __init__(self, config: Dict[str, Any]):
         neo4j_cfg = config.get("neo4j", {})
@@ -71,7 +71,7 @@ class GraphWriter:
         self.driver.close()
 
     # ------------------------------------------------------------------------
-    # 旧接口：兼容 KOS / DL / 结构化抽取（完全不动，保持 MERGE 语义）
+    # 结构化构建：兼容 KOS / DL / 结构化抽取（MERGE 幂等语义）
     # ------------------------------------------------------------------------
     def write(
         self,
@@ -125,7 +125,7 @@ class GraphWriter:
         return {"entities": entity_count, "relations": relation_count}
 
     # ------------------------------------------------------------------------
-    # 新接口：基于 LLM 抽取结果的双时态 + 因果写入（借鉴 Semantica A-Box 分层）
+    # LLM 构建：基于 LLM 抽取结果的双时态 + 因果写入（借鉴 Semantica A-Box 分层）
     #   - 实体：MERGE（canonicalName + type + modelId 唯一），追加 mentions/spans 到列表属性
     #   - 关系：CREATE（**不再 MERGE 关系**），避免覆盖掉前任期时态版本
     #           写库时带上 vt / evidence / confidence 全部字段
@@ -144,16 +144,16 @@ class GraphWriter:
 
         VALID_ANCHOR_TYPES = {"DATE", "DATERANGE", "RELATIVE", "NOW", "OPEN", "UNKNOWN"}
         with self.driver.session() as session:
-            # 1) 实体写入（MERGE，记录所有 mentions + spans 列表，便于后续证据查询）
+            # 1) 实体写入（MERGE，记录所有 evidenceTexts + evidenceSpans 列表，便于后续证据查询）
             for e in payload.entities:
                 # L0 兜底：核心字段为空直接跳过（上游 Pydantic 应该已经拦了，但做双保险避免造空节点）
                 if (not e.canonicalName or not e.canonicalName.strip()
                         or not e.type or not e.type.strip()
-                        or not e.mention or not e.mention.strip()):
+                        or not e.evidenceText or not e.evidenceText.strip()):
                     continue
                 extra_label = _entity_extra_label(e.type)
                 label_clause = f":{extra_label}" if extra_label else ""
-                span_str = f"{e.span.start},{e.span.end}"
+                # evidenceSpans 已弃用（恒为空），不写 evidenceSpans
                 session.run(
                     f"""
                     MERGE (n:Entity{label_clause} {{canonicalName: $canonicalName,
@@ -162,39 +162,38 @@ class GraphWriter:
                     ON CREATE SET n.name = $canonicalName,
                                   n.source = 'llm_extract',
                                   n.kosCategory = coalesce($kosCategory, n.kosCategory),
+                                  n.evidenceTexts = coalesce(n.evidenceTexts, []) + CASE
+                                      WHEN $evidenceText IN coalesce(n.evidenceTexts, []) THEN []
+                                      ELSE [$evidenceText] END,
                                   n.mentions = coalesce(n.mentions, []) + CASE
-                                      WHEN $mention IN coalesce(n.mentions, []) THEN []
-                                      ELSE [$mention] END,
-                                  n.mentionSpans = coalesce(n.mentionSpans, []) + CASE
-                                      WHEN $span IN coalesce(n.mentionSpans, []) THEN []
-                                      ELSE [$span] END,
+                                      WHEN $evidenceText IN coalesce(n.mentions, []) THEN []
+                                      ELSE [$evidenceText] END,
                                   n.updateTime = $now,
                                   n.createTime = $now
                     ON MATCH SET n.name = $canonicalName,
                                  n.source = 'llm_extract',
                                  n.kosCategory = coalesce($kosCategory, n.kosCategory),
+                                 n.evidenceTexts = coalesce(n.evidenceTexts, []) + CASE
+                                     WHEN $evidenceText IN coalesce(n.evidenceTexts, []) THEN []
+                                     ELSE [$evidenceText] END,
                                  n.mentions = coalesce(n.mentions, []) + CASE
-                                     WHEN $mention IN coalesce(n.mentions, []) THEN []
-                                     ELSE [$mention] END,
-                                 n.mentionSpans = coalesce(n.mentionSpans, []) + CASE
-                                     WHEN $span IN coalesce(n.mentionSpans, []) THEN []
-                                     ELSE [$span] END,
+                                     WHEN $evidenceText IN coalesce(n.mentions, []) THEN []
+                                     ELSE [$evidenceText] END,
                                  n.updateTime = $now
                     """,
                     canonicalName=e.canonicalName,
                     type=e.type,
                     modelId=model_id,
                     kosCategory=e.kosCategory,
-                    mention=e.mention,
-                    span=span_str,
+                    evidenceText=e.evidenceText,
                     now=now,
                 )
                 counts["entities"] += 1
 
             # 2) 时间锚点写入（独立 TimeAnchor 节点，挂在对应实体附近；也作为可查询的一等公民）
             for a in payload.timeAnchors:
-                # L0 兜底：expr 为空 / 类型非法 / RELATIVE 类型但无解析结果 → 跳过（避免造孤立点）
-                if (not a.expr or not a.expr.strip()
+                # L0 兜底：evidenceText 为空 / 类型非法 / RELATIVE 类型但无解析结果 → 跳过（避免造孤立点）
+                if (not a.evidenceText or not a.evidenceText.strip()
                         or a.type not in VALID_ANCHOR_TYPES):
                     continue
                 if a.type == "RELATIVE":
@@ -202,21 +201,19 @@ class GraphWriter:
                     has_rel = bool(a.relativeAnchor and a.relativeAnchor.strip())
                     if not (has_norm or has_rel):
                         continue
-                span_str = f"{a.span.start},{a.span.end}"
                 session.run(
                     """
                     CREATE (:TimeAnchor {
-                        expr: $expr, type: $type, normISO: $normISO,
+                        evidenceText: $evidenceText, type: $type, normISO: $normISO,
                         precision: $precision, relativeAnchor: $relativeAnchor,
-                        mentionSpan: $span,
                         docId: coalesce($docId, ''),
                         modelId: $modelId, createTime: $now
                     })
                     """,
-                    expr=a.expr, type=a.type, normISO=a.normISO or "",
+                    evidenceText=a.evidenceText, type=a.type, normISO=a.normISO or "",
                     precision=a.precision,
                     relativeAnchor=a.relativeAnchor or "",
-                    span=span_str, docId=doc_id, modelId=model_id, now=now,
+                    docId=doc_id, modelId=model_id, now=now,
                 )
                 counts["timeAnchors"] += 1
 
@@ -250,6 +247,7 @@ class GraphWriter:
                 ensure_node(session, r.object, r.objectType)
                 low_conf = r.confidence < CONF_RELATION_KEEP
                 evidence = _span_list(r.evidenceSpans)
+                evidence_text = (r.evidenceText or "")[:1000]
                 session.run(
                     """
                     MATCH (s:Entity {canonicalName: $s_cname, modelId: $modelId}),
@@ -271,6 +269,7 @@ class GraphWriter:
                         confidence: $conf,
                         lowConfidence: $lowConf,
                         evidence: $evidence,
+                        evidenceText: $evidence_text,
                         docId: coalesce($docId, ''),
                         createTime: $now,
                         updateTime: $now
@@ -284,6 +283,7 @@ class GraphWriter:
                     conf=float(r.confidence),
                     lowConf=low_conf,
                     evidence=evidence,
+                    evidence_text=evidence_text,
                     docId=doc_id,
                     modelId=model_id,
                     now=now,
@@ -298,6 +298,7 @@ class GraphWriter:
                 ensure_node(session, c.effectEvent, c.effectType or "事件")
                 low_conf = c.confidence < CONF_CAUSAL_KEEP
                 evidence = _span_list(c.evidenceSpans)
+                evidence_text = (c.evidenceText or "")[:1000]
                 # type属性 = 优先使用信号词，缺失则用中文默认
                 default_label = "导致" if c.direction == "FORWARD" else "预防/缓解"
                 display_type = (c.signalWord or "").strip() or default_label
@@ -320,6 +321,7 @@ class GraphWriter:
                         confidence: $conf,
                         lowConfidence: $lowConf,
                         evidence: $evidence,
+                        evidenceText: $evidence_text,
                         docId: coalesce($docId, ''),
                         createTime: $now,
                         updateTime: $now
@@ -333,6 +335,7 @@ class GraphWriter:
                     conf=float(c.confidence),
                     lowConf=low_conf,
                     evidence=evidence,
+                    evidence_text=evidence_text,
                     docId=doc_id,
                     modelId=model_id,
                     now=now,

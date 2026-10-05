@@ -187,7 +187,7 @@ KGraph/
 │   │   ├── kos_extractor.py     # KOS 抽取
 │   │   ├── dl_extractor.py      # 深度学习抽取
 │   │   ├── trainer.py           # 模型训练
-│   │   ├── graph_writer.py      # Neo4j 写入
+│   │   ├── graph_writer.py       # Neo4j 图谱构建
 │   │   ├── extraction_validator.py  # 抽取校验 + 后处理补边
 │   │   └── evaluation_core.py   # ⭐ 评估核心（内在指标 + G-Eval 裁判，无 FastAPI 依赖，HTTP/MCP 共用）
 │   ├── splitter/                # ⭐ 文本切分策略包

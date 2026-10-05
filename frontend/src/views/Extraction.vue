@@ -170,6 +170,12 @@
                           <el-tag :color="typeColorMap[row.type]" effect="dark">{{ row.type }}</el-tag>
                         </template>
                       </el-table-column>
+                      <el-table-column prop="evidenceText" label="证据(原文片段)" min-width="200" show-overflow-tooltip>
+                        <template #default="{ row }">
+                          <span v-if="row.evidenceText">{{ row.evidenceText }}</span>
+                          <span v-else style="color: #c0c4cc;">-</span>
+                        </template>
+                      </el-table-column>
                       <el-table-column label="属性" min-width="300">
                         <template #default="{ row }">
                           <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
@@ -192,6 +198,12 @@
                         </template>
                       </el-table-column>
                       <el-table-column prop="tail" label="尾实体" min-width="180" />
+                      <el-table-column prop="evidenceText" label="证据(原文片段)" min-width="260" show-overflow-tooltip>
+                        <template #default="{ row }">
+                          <span v-if="row.evidenceText">{{ row.evidenceText }}</span>
+                          <span v-else style="color: #c0c4cc;">-</span>
+                        </template>
+                      </el-table-column>
                       <el-table-column label="属性" min-width="280">
                         <template #default="{ row }">
                           <span v-if="!row.properties || !Object.keys(row.properties).length">-</span>
@@ -623,11 +635,12 @@ import ExtractionLayout from '@/components/ExtractionLayout.vue'
 interface Project { id: number; projectName: string }
 interface ModelInfo { id: number; modelName: string }
 interface Corpus { id: number; title: string; content?: string; source?: string; projectId?: number | string }
-interface ExtractEntity { name: string; type: string; properties?: Record<string, any> }
+interface ExtractEntity { name: string; type: string; evidenceText?: string; properties?: Record<string, any> }
 interface ExtractRelation {
   head: string; relation: string; tail: string; properties?: Record<string, any>
   status?: string; confidence?: number; vt_from?: string; vt_to?: string
   subjectType?: string; objectType?: string
+  evidenceText?: string
   evidenceSpans?: { start: number; end: number }[]
 }
 interface ExtractResult {

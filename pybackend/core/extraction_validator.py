@@ -103,41 +103,35 @@ def _evidence_spans_cover_signal_word(text: str, spans: List[EvidenceSpan], sig:
 
 
 def validate_w1_spans(payload: LlmExtractionPayload, text: str, rep: QualityReport) -> None:
-    # 1. 实体 mention
+    # 1. 实体 evidenceSpans 已弃用 find 定位，恒为空；evidenceText 即原文证据，不再校验切片一致性
     for i, e in enumerate(payload.entities):
-        if not _span_in_range(text, e.span):
-            rep.add("WARNING", "W1_ENTITY_SPAN_OOB",
-                    f"实体 '{e.canonicalName}' span [{e.span.start},{e.span.end}] 越界 (len={len(text)})，"
-                    "按宽松策略夹紧到合法范围（不 DROP）",
-                    entity_idx=i)
-            _clamp_span(text, e.span)
-        actual = text[e.span.start : e.span.end + 1]
-        if actual != e.mention:
-            rep.add("WARNING", "W1_ENTITY_MENTION_MISMATCH",
-                    f"实体 mention='{e.mention}' 与切片 actual='{actual}' 不一致，已修正 mention",
-                    entity_idx=i)
-            e.mention = actual
-    # 2. 时间锚点
+        if e.evidenceSpans:
+            # 向后兼容：若存在 span 则校验越界
+            for s in e.evidenceSpans:
+                if not _span_in_range(text, s):
+                    rep.add("WARNING", "W1_ENTITY_SPAN_OOB",
+                            f"实体 '{e.canonicalName}' span 越界 (len={len(text)})，夹紧到合法范围",
+                            entity_idx=i)
+                    _clamp_span(text, s)
+    # 2. 时间锚点 evidenceSpans 已弃用，恒为空；evidenceText 即原文证据
     for a in payload.timeAnchors:
-        if not _span_in_range(text, a.span):
-            rep.add("WARNING", "W1_ANCHOR_SPAN_OOB",
-                    f"时间锚点 expr='{a.expr}' span 越界，夹紧到合法范围（不 DROP）")
-            _clamp_span(text, a.span)
-        else:
-            actual = text[a.span.start : a.span.end + 1]
-            if actual != a.expr:
-                rep.add("WARNING", "W1_ANCHOR_EXPR_MISMATCH",
-                        f"锚点 expr='{a.expr}' 切片='{actual}' 不一致，修正 expr")
-                a.expr = actual
-    # 3. 关系证据（夹紧不 DROP）
+        if a.evidenceSpans:
+            for s in a.evidenceSpans:
+                if not _span_in_range(text, s):
+                    rep.add("WARNING", "W1_ANCHOR_SPAN_OOB",
+                            f"时间锚点 '{a.evidenceText}' span 越界，夹紧到合法范围")
+                    _clamp_span(text, s)
+    # 3. 关系证据（evidenceText 为评估唯一数据源，evidenceSpans 可空；无证据时不再补占位 span，避免评估切出错误片段）
     for i, r in enumerate(payload.relations):
         if not r.evidenceSpans:
-            rep.add("WARNING", "W1_RELATION_NO_EVIDENCE",
-                    f"关系 ({r.subject},{r.predicate},{r.object}) 证据为空，"
-                    "宽松策略：保留入库，证据span补(0,min(10,len-1))以便追溯",
-                    relation_idx=i)
-            L = max(1, len(text))
-            r.evidenceSpans = [EvidenceSpan(start=0, end=min(10, L - 1))]
+            if r.evidenceText:
+                # 正常态：evidenceText 已承载证据，evidenceSpans 留空（前端高亮坐标后续按需补）
+                pass
+            else:
+                rep.add("WARNING", "W1_RELATION_NO_EVIDENCE",
+                        f"关系 ({r.subject},{r.predicate},{r.object}) 无 evidenceText，"
+                        "宽松策略：保留入库，evidenceSpans 留空（评估时视为无证据）",
+                        relation_idx=i)
         else:
             any_oob = False
             for s in r.evidenceSpans:
@@ -148,14 +142,16 @@ def validate_w1_spans(payload: LlmExtractionPayload, text: str, rep: QualityRepo
                 rep.add("WARNING", "W1_RELATION_SPAN_CLAMPED",
                         f"关系 ({r.subject},{r.predicate},{r.object}) 部分证据span越界，已夹紧",
                         relation_idx=i)
-    # 4. 因果证据 + signalWord 对齐（不 DROP，只告警）
+    # 4. 因果证据 + signalWord 对齐（不 DROP，只告警；无证据时不补占位 span）
     for i, c in enumerate(payload.causalEdges):
         if not c.evidenceSpans:
-            rep.add("WARNING", "W1_CAUSAL_NO_EVIDENCE",
-                    f"因果 ({c.causeEvent}->{c.effectEvent}) 证据为空，宽松策略：保留并补 (0,*) span",
-                    causal_idx=i)
-            L = max(1, len(text))
-            c.evidenceSpans = [EvidenceSpan(start=0, end=min(10, L - 1))]
+            if c.evidenceText:
+                # 正常态：evidenceText 已承载证据，evidenceSpans 留空
+                pass
+            else:
+                rep.add("WARNING", "W1_CAUSAL_NO_EVIDENCE",
+                        f"因果 ({c.causeEvent}->{c.effectEvent}) 证据为空，宽松策略：保留，evidenceSpans 留空",
+                        causal_idx=i)
         else:
             any_oob = False
             for s in c.evidenceSpans:
@@ -166,11 +162,6 @@ def validate_w1_spans(payload: LlmExtractionPayload, text: str, rep: QualityRepo
                 rep.add("WARNING", "W1_CAUSAL_SPAN_CLAMPED",
                         f"因果 ({c.causeEvent}->{c.effectEvent}) span越界已夹紧",
                         causal_idx=i)
-        if not _evidence_spans_cover_signal_word(text, c.evidenceSpans, c.signalWord):
-            rep.add("WARNING", "W1_CAUSAL_SIGNAL_MISSING",
-                    f"因果 signalWord='{c.signalWord}' 未出现在evidenceSpans内；"
-                    "宽松策略：保留入库，不中断（请人工核对该因果是否成立）",
-                    causal_idx=i)
 
 
 # ============================================================================
@@ -214,7 +205,8 @@ def validate_w2_temporal(payload: LlmExtractionPayload, rep: QualityReport) -> N
         for e in payload.entities:
             if e.canonicalName == event_name:
                 for a in payload.timeAnchors:
-                    if (a.span.start >= e.span.start - 20) and (a.span.end <= e.span.end + 40) and a.normISO:
+                    # span 已弃用（恒为 None），无法基于位置匹配锚点；仅当锚点有 normISO 时直接返回
+                    if a.normISO:
                         return a.normISO
         return None
 
@@ -249,18 +241,15 @@ def _name_sim(a: str, b: str) -> float:
 
 
 def validate_w3_entity_dedup(payload: LlmExtractionPayload, rep: QualityReport) -> None:
-    # 3.1 完全相等去重（canonicalName + type 相同 → 合并 span/mention 到第一条）
+    # 3.1 完全相等去重（canonicalName + type 相同 → 保留第一条，span 已弃用不再合并范围）
     seen: Dict[Tuple[str, str], ExtractedEntity] = {}
     new_entities: List[ExtractedEntity] = []
     for i, e in enumerate(payload.entities):
         key = (e.canonicalName.strip(), e.type.strip())
         if key in seen:
             rep.add("WARNING", "W3_ENTITY_DEDUP",
-                    f"实体重复: '{e.canonicalName}' <{e.type}>，合并 mention 与 span（宽松策略：节点仍保留）",
+                    f"实体重复: '{e.canonicalName}' <{e.type}>，已去重（宽松策略：节点仍保留第一条）",
                     entity_idx=i)
-            first = seen[key]
-            if e.span.start < first.span.start or e.span.end > first.span.end:
-                pass  # 只扩范围，mention 仍保留 first 的
         else:
             seen[key] = e
             new_entities.append(e)
@@ -319,9 +308,10 @@ def _event_vt_from_relations(event_name: str, payload: LlmExtractionPayload) -> 
 
 def _event_span_guess(event_name: str, payload: LlmExtractionPayload) -> Optional[Tuple[int, int]]:
     for e in payload.entities:
-        if e.canonicalName == event_name:
-            return e.span.start, e.span.end
-    # 关系 evidence 里找事件名原文位置
+        if e.canonicalName == event_name and e.evidenceSpans:
+            s = e.evidenceSpans[0]
+            return s.start, s.end
+    # 关系 evidence 里找事件名原文位置（evidenceSpans 已弃用，通常为空）
     for r in payload.relations:
         for s in r.evidenceSpans:
             if s.start <= s.end:
@@ -423,7 +413,7 @@ def validate_w36_isolated_static_entity_patch(
         if r.object:
             covered.add(r.object)
 
-    # 2) 找出所有静态孤立实体（非 "事件" 类型 且 未被任何关系覆盖 且有合理 span）
+    # 2) 找出所有静态孤立实体（非 "事件" 类型 且 未被任何关系覆盖）
     static_entities: List[Dict[str, Any]] = []
     for e in payload.entities:
         etype = (e.type or "").strip()
@@ -433,10 +423,8 @@ def validate_w36_isolated_static_entity_patch(
             continue
         if not e.canonicalName.strip():
             continue
-        s_start, s_end = e.span.start, e.span.end
-        if s_start <= 0 and s_end <= 0:
-            # span 是 (0,0) 的兜底不处理（LLM完全没定位到的实体，可能是幻觉）
-            continue
+        # evidenceSpans 已弃用（恒为空），span_center 退化为 0
+        s_start, s_end = (e.evidenceSpans[0].start, e.evidenceSpans[0].end) if e.evidenceSpans else (0, 0)
         static_entities.append({
             "name": e.canonicalName,
             "type": etype,
@@ -456,7 +444,7 @@ def validate_w36_isolated_static_entity_patch(
             continue
         if not e.canonicalName.strip():
             continue
-        s_start, s_end = e.span.start, e.span.end
+        s_start, s_end = (e.evidenceSpans[0].start, e.evidenceSpans[0].end) if e.evidenceSpans else (0, 0)
         neighbor_candidates.append({
             "name": e.canonicalName,
             "type": etype,
@@ -467,10 +455,11 @@ def validate_w36_isolated_static_entity_patch(
     if not neighbor_candidates:
         for e in payload.entities:
             if e.canonicalName in covered and e.canonicalName.strip():
+                s_start, s_end = (e.evidenceSpans[0].start, e.evidenceSpans[0].end) if e.evidenceSpans else (0, 0)
                 neighbor_candidates.append({
                     "name": e.canonicalName,
                     "type": (e.type or "").strip(),
-                    "span_center": (e.span.start + e.span.end) // 2,
+                    "span_center": (s_start + s_end) // 2,
                 })
 
     if not neighbor_candidates:
@@ -510,7 +499,7 @@ def validate_w36_isolated_static_entity_patch(
         else:
             subj, subj_t = iso["name"], iso["type"]
             obj, obj_t = best_n["name"], best_n["type"]
-        from core.extraction_schema import ExtractedRelation, EvidenceSpan
+        from core.extraction_schema import ExtractedRelation
         payload.relations.append(ExtractedRelation(
             subject=subj,
             predicate=predicate,
@@ -522,7 +511,8 @@ def validate_w36_isolated_static_entity_patch(
             vt_precision_from="unknown",
             vt_precision_to="unknown",
             confidence=0.50,
-            evidenceSpans=[EvidenceSpan(start=0, end=0)],
+            evidenceText="",
+            evidenceSpans=[],
         ))
         added += 1
         covered.add(iso["name"])  # 连一次就够了，不再参与后续连边的候选邻居（避免爆炸）
@@ -653,7 +643,9 @@ def run_quality_pipeline(
     validate_w2_temporal(payload, rep)
     validate_w3_entity_dedup(payload, rep)
     validate_w35_temporal_event_chaining(payload, rep, text)
-    validate_w36_isolated_static_entity_patch(payload, rep, text)  # 新增：孤立实体兜底补边
+    # W3.6 孤立实体兜底补边已禁用：自动补边会引入无证据的弱关系（篇章关联/文本共现关联），
+    # 降低后续推理确定性，且评估 evidenceValidity 时需特殊处理。允许孤立实体存在。
+    # validate_w36_isolated_static_entity_patch(payload, rep, text)
     validate_w4_causal_dag(payload, rep)
     validate_w5_low_confidence(payload, rep)
     # 计数统计

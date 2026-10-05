@@ -69,6 +69,8 @@ def _evaluate_events(req: EvaluationRequest, request: Request):
                 llm_client = LLMClient({
                     "model": {
                         "model_name": row["model_name"],
+                        "provider": row.get("provider"),
+                        "context_window": row.get("context_window"),
                         "api_key": row["api_key"],
                         "base_url": row["base_url"],
                         "timeout_sec": 300.0,

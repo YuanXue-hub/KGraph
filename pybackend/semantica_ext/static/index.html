@@ -6,152 +6,267 @@
 <title>KGraph vs Semantica 抽取对比实验</title>
 <style>
   :root {
-    --primary: #4D6BFE; --primary-weak: #eef2ff;
-    --text-1: #262a33; --text-2: #51555e; --text-3: #8f9199;
-    --border: #e5e7ee; --bg-soft: #f7f8fa; --ok: #67c23a; --warn: #e6a23c; --bad: #f56c6c;
+    --primary: #4D6BFE; --primary-weak: #eef2ff; --primary-grad: linear-gradient(135deg, #4D6BFE 0%, #7B5CFF 100%);
+    --s-accent: #7C3AED; --s-weak: #f5f0ff;
+    --text-1: #1a1d26; --text-2: #4b4f5c; --text-3: #9096a3;
+    --border: #e7e9f0; --bg: #f4f5f9; --card: #ffffff;
+    --ok: #10b981; --ok-weak: #ecfdf5; --warn: #f59e0b; --warn-weak: #fffbeb; --bad: #ef4444; --bad-weak: #fef2f2;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-         background: #f3f4f7; color: var(--text-1); font-size: 14px; padding: 24px; }
-  .container { max-width: 1400px; margin: 0 auto; }
+         background: var(--bg); color: var(--text-1); font-size: 14px; padding: 28px 24px 40px; }
+  .container { max-width: 1440px; margin: 0 auto; }
 
-  .header { background: #fff; border: 1px solid var(--border); border-radius: 12px;
-            padding: 18px 24px; margin-bottom: 16px; }
-  .header h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
-  .header p { font-size: 12px; color: var(--text-3); }
-  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 14px; }
-  .ctl { display: flex; flex-direction: column; gap: 4px; }
-  .ctl label { font-size: 12px; color: var(--text-2); }
-  select, input[type="number"], input[type="text"] {
-    border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
-    font-size: 13px; background: #fff; color: var(--text-1); min-width: 180px; outline: none; }
-  select:focus, input:focus { border-color: var(--primary); }
-  button { border: none; border-radius: 8px; padding: 8px 18px; font-size: 13px;
-           cursor: pointer; background: var(--primary); color: #fff; }
-  button:hover { opacity: .9; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  button.ghost { background: #fff; color: var(--primary); border: 1px solid var(--primary); }
+  /* ===== 顶栏 ===== */
+  .hero { background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+          padding: 22px 28px 20px; margin-bottom: 18px; position: relative; overflow: hidden; }
+  .hero::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+                  background: var(--primary-grad); }
+  .hero-row { display: flex; align-items: center; gap: 14px; }
+  .hero-logo { width: 40px; height: 40px; border-radius: 11px; background: var(--primary-grad);
+               display: flex; align-items: center; justify-content: center; color: #fff;
+               font-weight: 700; font-size: 15px; letter-spacing: -.5px; flex-shrink: 0;
+               box-shadow: 0 4px 12px rgba(77,107,254,.28); }
+  .hero h1 { font-size: 19px; font-weight: 700; letter-spacing: -.2px; }
+  .hero .sub { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
+  .vs-badge { margin-left: auto; font-size: 12px; color: var(--primary); background: var(--primary-weak);
+              border: 1px solid #dfe5ff; padding: 5px 14px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
 
-  .meta-note { margin-top: 10px; font-size: 12px; color: var(--text-3); }
-  .meta-note b { color: var(--warn); }
+  /* ===== 配置区：左抽取 / 右对比 ===== */
+  .config-grid { display: grid; grid-template-columns: 1fr 1px 1fr; gap: 0; margin-top: 18px;
+                 padding-top: 18px; border-top: 1px solid var(--border); }
+  .config-divider { background: var(--border); margin: 0 26px; }
+  .config-block { padding-right: 26px; }
+  .config-block.right { padding-right: 0; padding-left: 26px; }
+  .cfg-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700;
+               color: var(--text-1); margin-bottom: 12px; }
+  .cfg-step { width: 19px; height: 19px; border-radius: 6px; font-size: 11.5px; color: #fff;
+              display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+  .config-block.left .cfg-step { background: var(--primary); }
+  .config-block.right .cfg-step { background: var(--s-accent); }
+  .cfg-title .hint { font-size: 11px; color: var(--text-3); font-weight: 400; margin-left: 2px; }
+  .ctl { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+  .ctl > label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+  select { border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px;
+    font-size: 13px; background: #fff; color: var(--text-1); width: 100%; outline: none;
+    transition: border-color .15s, box-shadow .15s; }
+  select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(77,107,254,.12); }
+  .ctl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .metric-box { display: flex; gap: 6px; flex-wrap: wrap; background: var(--bg);
+                border: 1px solid var(--border); border-radius: 9px; padding: 6px 8px; }
+  .metric-box label { display: flex; align-items: center; gap: 4px; font-size: 12.5px;
+                      color: var(--text-2); padding: 3px 8px; border-radius: 6px; cursor: pointer;
+                      transition: background .15s, color .15s; user-select: none; }
+  .metric-box label:hover { background: #fff; }
+  .metric-box label:has(input:checked) { background: #fff; color: var(--primary); font-weight: 600;
+                                         box-shadow: inset 0 0 0 1px #d4dcff; }
+  .metric-box input { accent-color: var(--primary); }
+  .cfg-actions { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
 
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .panel { background: #fff; border: 1px solid var(--border); border-radius: 12px;
-           padding: 18px 20px; min-height: 300px; }
-  .panel h2 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-  .tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--primary-weak);
-         color: var(--primary); font-weight: 400; }
-  .stats { display: flex; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
-  .stat { background: var(--bg-soft); border-radius: 8px; padding: 8px 14px; flex: 1; min-width: 90px; }
-  .stat .v { font-size: 18px; font-weight: 600; }
-  .stat .l { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+  button.primary { border: none; border-radius: 9px; padding: 9px 20px; font-size: 13.5px; font-weight: 600;
+           cursor: pointer; background: var(--primary-grad); color: #fff; transition: opacity .15s, transform .1s;
+           box-shadow: 0 4px 12px rgba(77,107,254,.25); }
+  button.primary:hover { opacity: .92; }
+  button.primary:active { transform: translateY(1px); }
+  button.primary:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+  button.violet { background: linear-gradient(135deg, #7C3AED 0%, #C084FC 100%);
+                 box-shadow: 0 4px 12px rgba(124,58,237,.25); }
+  button.violet:disabled { box-shadow: none; }
+  button.ghost { border: 1px solid var(--border); border-radius: 9px; padding: 9px 16px; font-size: 13px;
+                 cursor: pointer; background: #fff; color: var(--text-2); font-weight: 500;
+                 transition: all .15s; }
+  button.ghost:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-weak); }
+  button.ghost:disabled { opacity: .45; cursor: not-allowed; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
-  th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: left;
-           vertical-align: top; word-break: break-all; }
-  th { background: var(--bg-soft); color: var(--text-2); font-weight: 500; white-space: nowrap; }
-  .tbl-title { font-size: 13px; font-weight: 600; margin-top: 14px; color: var(--text-2); }
-  .type-chip { display: inline-block; font-size: 11px; color: var(--text-3);
-               border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
-  .empty { text-align: center; color: var(--text-3); padding: 40px 0; font-size: 13px; }
-  .loading { text-align: center; color: var(--primary); padding: 40px 0; font-size: 13px; }
+  .meta-note { margin-top: 14px; font-size: 12.5px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+  .meta-note.running { color: var(--primary); font-weight: 500; }
+  .meta-note.ok { color: var(--ok); }
 
-  .eval-section { margin-top: 16px; border-top: 1px dashed var(--border); padding-top: 14px; }
-  .eval-score-row { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
-  .eval-score { font-size: 32px; font-weight: 700; }
+  /* ===== 双栏面板 ===== */
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+           padding: 20px 22px 22px; min-height: 320px; position: relative; overflow: hidden;
+           transition: box-shadow .2s; }
+  .panel:hover { box-shadow: 0 6px 24px rgba(26,29,38,.06); }
+  .panel::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .panel.k::before { background: var(--primary-grad); }
+  .panel.s::before { background: linear-gradient(135deg, #7C3AED 0%, #C084FC 100%); }
+  .panel-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .panel-head .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .panel.k .dot { background: var(--primary); box-shadow: 0 0 0 4px rgba(77,107,254,.15); }
+  .panel.s .dot { background: var(--s-accent); box-shadow: 0 0 0 4px rgba(124,58,237,.15); }
+  .panel-head h2 { font-size: 16px; font-weight: 700; letter-spacing: -.2px; }
+  .tag { font-size: 11px; padding: 3px 9px; border-radius: 999px; font-weight: 500; margin-left: auto; }
+  .panel.k .tag { background: var(--primary-weak); color: var(--primary); }
+  .panel.s .tag { background: var(--s-weak); color: var(--s-accent); }
+
+  /* 统计卡片 */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat { background: var(--bg); border-radius: 11px; padding: 12px 14px; text-align: center;
+          border: 1px solid transparent; transition: border-color .15s; }
+  .stat:hover { border-color: var(--border); }
+  .stat .v { font-size: 21px; font-weight: 700; letter-spacing: -.5px; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 11px; color: var(--text-3); margin-top: 3px; }
+  .panel.k .stat .v { color: var(--primary); }
+  .panel.s .stat .v { color: var(--s-accent); }
+
+  /* 表格 */
+  .tbl-title { font-size: 12.5px; font-weight: 600; color: var(--text-2); margin: 14px 0 6px;
+               display: flex; align-items: center; gap: 6px; }
+  .tbl-title .n { color: var(--text-3); font-weight: 500; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px;
+          border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 7px 10px; text-align: left; vertical-align: top; word-break: break-all; }
+  th { background: var(--bg); color: var(--text-2); font-weight: 600; font-size: 11.5px;
+       white-space: nowrap; border-bottom: 1px solid var(--border); }
+  td { border-bottom: 1px solid #f0f1f6; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:nth-child(even) td { background: #fafbfd; }
+  tbody tr:hover td { background: var(--primary-weak); }
+  .panel.s tbody tr:hover td { background: var(--s-weak); }
+  .type-chip { display: inline-block; font-size: 10.5px; color: var(--text-3);
+               border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-left: 4px;
+               white-space: nowrap; }
+  .empty { text-align: center; color: var(--text-3); padding: 56px 0; font-size: 13px; }
+  .empty .big { font-size: 30px; margin-bottom: 10px; opacity: .5; }
+  .loading { text-align: center; padding: 56px 0; font-size: 13px; color: var(--text-2); }
+  .loading .sub { font-size: 11.5px; color: var(--text-3); margin-top: 6px; }
+  .spinner { display: inline-block; width: 22px; height: 22px; border: 2.5px solid var(--border);
+             border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite;
+             vertical-align: -6px; margin-bottom: 10px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 评估区 */
+  .eval-section { margin-top: 18px; border-top: 1px dashed var(--border); padding-top: 16px; }
+  .eval-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+  .score-ring { width: 76px; height: 76px; border-radius: 50%; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; flex-shrink: 0; border: 3px solid var(--border); }
+  .score-ring .v { font-size: 21px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .score-ring .l { font-size: 9.5px; color: var(--text-3); margin-top: 2px; }
   .score-good { color: var(--ok); } .score-mid { color: var(--warn); } .score-bad { color: var(--bad); }
+  .ring-good { border-color: var(--ok); background: var(--ok-weak); }
+  .ring-mid { border-color: var(--warn); background: var(--warn-weak); }
+  .ring-bad { border-color: var(--bad); background: var(--bad-weak); }
+  .eval-meta { font-size: 12px; color: var(--text-3); line-height: 1.7; }
   .verdict-2 { color: var(--ok); } .verdict-1 { color: var(--warn); } .verdict-0 { color: var(--bad); }
 
-  footer { margin-top: 16px; text-align: center; font-size: 12px; color: var(--text-3); }
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--primary);
-             border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite;
-             vertical-align: -2px; margin-right: 6px; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .raw-toggle { font-size: 12px; color: var(--primary); cursor: pointer; user-select: none; margin-top: 8px; }
-  pre.raw { background: var(--bg-soft); border-radius: 8px; padding: 10px; font-size: 11px;
-            max-height: 300px; overflow: auto; white-space: pre-wrap; display: none; }
+  .raw-toggle { font-size: 12px; color: var(--text-3); cursor: pointer; user-select: none;
+                margin-top: 10px; transition: color .15s; }
+  .raw-toggle:hover { color: var(--primary); }
+  pre.raw { background: #1e2230; color: #cbd2e0; border-radius: 10px; padding: 12px; font-size: 11px;
+            max-height: 320px; overflow: auto; white-space: pre-wrap; display: none; margin-top: 8px;
+            font-family: 'SF Mono', Menlo, Consolas, monospace; line-height: 1.5; }
   pre.raw.show { display: block; }
+
+  footer { margin-top: 22px; text-align: center; font-size: 12px; color: var(--text-3); }
+
+  @media (max-width: 1000px) {
+    .cols { grid-template-columns: 1fr; }
+    .config-grid { grid-template-columns: 1fr; }
+    .config-divider { display: none; }
+    .config-block, .config-block.right { padding: 0; }
+    .config-block.right { margin-top: 16px; }
+  }
 </style>
 </head>
 <body>
 <div class="container">
-  <div class="header">
-    <h1>KGraph vs Semantica 抽取对比实验</h1>
-    <p>同一语料 · 同一抽取模型 · 同一裁判评估 —— 唯一变量是抽取框架。结果不写 Neo4j，可导出 JSON。</p>
-    <div class="controls">
-      <div class="ctl">
-        <label>语料</label>
-        <select id="corpusSel"><option value="">加载中…</option></select>
+
+  <div class="hero">
+    <div class="hero-row">
+      <div class="hero-logo">KG</div>
+      <div>
+        <h1>KGraph vs Semantica 抽取对比实验</h1>
+        <div class="sub">同一语料 · 同一抽取模型 · 同一裁判评估 —— 唯一变量是抽取方法本身</div>
       </div>
-      <div class="ctl">
-        <label>抽取模型（两侧共用）</label>
-        <select id="modelSel"><option value="">加载中…</option></select>
-      </div>
-      <div class="ctl">
-        <label>评估抽样</label>
-        <select id="sampleSel">
-          <option value="10">10 条</option>
-          <option value="20">20 条</option>
-          <option value="0">全部</option>
-        </select>
-      </div>
-      <div class="ctl">
-        <label>裁判模型（统一用 chat，减少方差）</label>
-        <select id="judgeSel"><option value="">加载中…</option></select>
-      </div>
-      <div class="ctl">
-        <label>评估指标（多选，两侧共用保证公平）</label>
-        <div id="metricBoxes" style="display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--text-2)">
-          <label><input type="checkbox" name="metric" value="tripleFaithfulness" checked> 忠实度</label>
-          <label><input type="checkbox" name="metric" value="predicateReasonableness" checked> 谓词</label>
-          <label><input type="checkbox" name="metric" value="bitemporalCorrectness" checked> 双时态</label>
-          <label><input type="checkbox" name="metric" value="evidenceValidity" checked> 证据句</label>
-          <label><input type="checkbox" name="metric" value="entityCorrectness" checked> 实体边界</label>
+      <div class="vs-badge">纯抽取方法对比 · 无后处理</div>
+    </div>
+
+    <div class="config-grid">
+      <!-- 左：抽取配置 -->
+      <div class="config-block left">
+        <div class="cfg-title"><span class="cfg-step">1</span>抽取配置<span class="hint">两侧并行 · 原生输出</span></div>
+        <div class="ctl">
+          <label>语料</label>
+          <select id="corpusSel" onchange="onCorpusChange()"><option value="">加载中…</option></select>
+        </div>
+        <div class="ctl">
+          <label>抽取模型（两侧共用）</label>
+          <select id="modelSel"><option value="">加载中…</option></select>
+        </div>
+        <div class="cfg-actions">
+          <button class="primary" id="runBtn" onclick="runExtract()">开始抽取</button>
         </div>
       </div>
-      <div class="ctl">
-        <label>Semantica 公平校验墙（对齐 KGraph W1-W5）</label>
-        <select id="fairnessSel">
-          <option value="on">开启（推荐：两侧同规则后处理）</option>
-          <option value="off">关闭（呈现 Semantica 原生输出）</option>
-        </select>
-      </div>
-      <div class="ctl">
-        <label>&nbsp;</label>
-        <button id="runBtn" onclick="runCompare()">开始对比抽取</button>
-      </div>
-      <div class="ctl">
-        <label>&nbsp;</label>
-        <button class="ghost" id="exportBtn" onclick="exportJson()" disabled>导出 JSON</button>
-      </div>
-      <div class="ctl">
-        <label>&nbsp;</label>
-        <button class="ghost" id="reportBtn" onclick="exportReport()" disabled>导出报告</button>
+
+      <div class="config-divider"></div>
+
+      <!-- 右：对比配置 -->
+      <div class="config-block right">
+        <div class="cfg-title"><span class="cfg-step">2</span>对比配置<span class="hint">先抽取，再对比</span></div>
+        <div class="ctl-pair">
+          <div class="ctl">
+            <label>评估抽样</label>
+            <select id="sampleSel">
+              <option value="10">10 条</option>
+              <option value="20">20 条</option>
+              <option value="0">全部</option>
+            </select>
+          </div>
+          <div class="ctl">
+            <label>裁判模型（建议 chat）</label>
+            <select id="judgeSel"><option value="">加载中…</option></select>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>评估指标（两侧共用，保证公平）</label>
+          <div class="metric-box" id="metricBoxes">
+            <label><input type="checkbox" name="metric" value="tripleFaithfulness" checked> 忠实度</label>
+            <label><input type="checkbox" name="metric" value="predicateReasonableness" checked> 谓词</label>
+            <label><input type="checkbox" name="metric" value="bitemporalCorrectness" checked> 双时态</label>
+            <label><input type="checkbox" name="metric" value="evidenceValidity" checked> 证据句</label>
+            <label><input type="checkbox" name="metric" value="entityCorrectness" checked> 实体边界</label>
+          </div>
+        </div>
+        <div class="cfg-actions">
+          <button class="primary violet" id="evalBtn" onclick="runEval()" disabled>开始对比</button>
+          <button class="ghost" id="exportBtn" onclick="exportJson()" disabled>导出 JSON</button>
+          <button class="ghost" id="reportBtn" onclick="exportReport()" disabled>导出报告</button>
+        </div>
       </div>
     </div>
-    <div class="meta-note" id="metaNote">选择语料后点击「开始对比抽取」：KGraph 走 8001（dryRun 跳过写库），Semantica 走 8002。</div>
+
+    <div class="meta-note" id="metaNote">① 选语料点「开始抽取」：两侧并行抽取（原生输出、无后处理）→ ② 抽取完成后点「开始对比」评估。</div>
   </div>
 
   <div class="cols">
-    <div class="panel" id="panelK">
-      <h2>KGraph <span class="tag">8001 · 两阶段 · 证据回溯 · W1-W5</span></h2>
-      <div id="kBody"><div class="empty">等待抽取</div></div>
+    <div class="panel k" id="panelK">
+      <div class="panel-head">
+        <span class="dot"></span>
+        <h2>KGraph</h2>
+        <span class="tag">8001 · 两阶段 · 实体表硬约束 · 证据回溯</span>
+      </div>
+      <div id="kBody"><div class="empty"><div class="big">◎</div>等待抽取</div></div>
       <div class="eval-section" id="kEval"></div>
     </div>
-    <div class="panel" id="panelS">
-      <h2>Semantica <span class="tag">8002 · 两阶段 · typed · temporal 扩展</span></h2>
-      <div id="sBody"><div class="empty">等待抽取</div></div>
+    <div class="panel s" id="panelS">
+      <div class="panel-head">
+        <span class="dot"></span>
+        <h2>Semantica</h2>
+        <span class="tag">8002 · typed 两阶段 · temporal 扩展</span>
+      </div>
+      <div id="sBody"><div class="empty"><div class="big">◎</div>等待抽取</div></div>
       <div class="eval-section" id="sEval"></div>
     </div>
   </div>
 
-  <footer>KGraph vs Semantica 对比实验台 · 抽取结果不入库 · 评估复用 KGraph /api/evaluate</footer>
+  <footer>KGraph vs Semantica 对比实验台 · 纯抽取方法对比（无后处理）· 评估复用 KGraph /api/evaluate</footer>
 </div>
 
 <script>
 const API_8001 = 'http://localhost:8001';
 const API_8002 = 'http://localhost:8002';
-const state = { corpus: null, kResult: null, sResult: null, kEval: null, sEval: null, llmModelId: null };
+const state = { corpus: null, kResult: null, sResult: null, kEval: null, sEval: null, llmModelId: null, extracted: false };
 
 async function jfetch(url, opts) {
   const r = await fetch(url, opts);
@@ -170,7 +285,7 @@ async function loadModels() {
   const optHtml = rows.map(m =>
     `<option value="${m.id}">${esc(m.display_name || m.model_name)} (${esc(m.model_name)})</option>`).join('');
   document.getElementById('modelSel').innerHTML = optHtml;
-  // 裁判模型默认选 deepseek-chat（非推理模型，评估方差小）
+  // 裁判模型默认选非推理 chat 模型（评估方差小）
   const judgeSel = document.getElementById('judgeSel');
   judgeSel.innerHTML = optHtml;
   const chatIdx = rows.findIndex(m => /chat/i.test(m.model_name) && !/pro|flash|reason/i.test(m.model_name));
@@ -179,27 +294,49 @@ async function loadModels() {
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-async function runCompare() {
+/** 切换语料后清空已有结果（防止新旧语料混比） */
+function onCorpusChange() {
+  if (!state.extracted) return;
+  state.kResult = state.sResult = state.kEval = state.sEval = null;
+  state.extracted = false;
+  document.getElementById('kBody').innerHTML = '<div class="empty"><div class="big">◎</div>等待抽取</div>';
+  document.getElementById('sBody').innerHTML = '<div class="empty"><div class="big">◎</div>等待抽取</div>';
+  document.getElementById('kEval').innerHTML = '';
+  document.getElementById('sEval').innerHTML = '';
+  document.getElementById('evalBtn').disabled = true;
+  document.getElementById('exportBtn').disabled = true;
+  document.getElementById('reportBtn').disabled = true;
+  const note = document.getElementById('metaNote');
+  note.className = 'meta-note';
+  note.textContent = '语料已切换，请重新抽取。';
+}
+
+/** 第一步：只抽取（两侧并行，原生输出） */
+async function runExtract() {
   const corpusId = document.getElementById('corpusSel').value;
   const modelId = document.getElementById('modelSel').value;
   if (!corpusId) return alert('请先选择语料');
   state.llmModelId = modelId ? Number(modelId) : null;
 
-  document.getElementById('kBody').innerHTML = '<div class="loading"><span class="spinner"></span>KGraph 抽取中…</div>';
-  document.getElementById('sBody').innerHTML = '<div class="loading"><span class="spinner"></span>Semantica 抽取中…</div>';
-  document.getElementById('kEval').innerHTML = '';
-  document.getElementById('sEval').innerHTML = '';
-  state.kResult = state.sResult = state.kEval = state.sEval = null;
+  // 清空旧结果
+  onCorpusChange();
+  document.getElementById('kBody').innerHTML =
+    `<div class="loading"><div class="spinner"></div><div>KGraph 抽取中…</div><div class="sub">阶段1 实体 → 阶段2 关系（纯计算接口）</div></div>`;
+  document.getElementById('sBody').innerHTML =
+    `<div class="loading"><div class="spinner"></div><div>Semantica 抽取中…</div><div class="sub">typed 两阶段 + temporal 扩展，通常较慢</div></div>`;
   document.getElementById('runBtn').disabled = true;
-  document.getElementById('metaNote').innerHTML = '<b>抽取进行中</b> —— KGraph 两阶段调用 + 质量管道；Semantica 两阶段调用 + temporal 扩展。';
+  const note = document.getElementById('metaNote');
+  note.className = 'meta-note running';
+  note.textContent = '抽取进行中 —— 两侧并行启动，均为各自框架的原生抽取流程，不带后处理。';
 
   try {
     const corpus = await jfetch(`${API_8002}/api/corpora/${corpusId}`);
     state.corpus = corpus;
     const text = corpus.content;
 
-    // 两路并行抽取（互不依赖）；KGraph 走两步纯计算接口（entities → relations），天然不写库
-    const fairness = document.getElementById('fairnessSel').value === 'on';
+    // 两路并行抽取：两边都只比"抽取方法原生结果"，不带任何后处理
+    // KGraph 走两步纯计算接口（entities → relations，无 W1-W5 质量管道）
+    // Semantica 关闭 fairness 校验墙（原生抽取直出）
     const kExtract = async () => {
       const stage1 = await jfetch(`${API_8001}/api/extract/entities`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -215,7 +352,7 @@ async function runCompare() {
           },
         }),
       });
-      // 两步接口分别计时计 token，聚合为主链路同规格结果
+      // 两步接口分别计时计 token，聚合
       return {
         ...final,
         entities: final.entities,
@@ -228,25 +365,45 @@ async function runCompare() {
       kExtract(),
       jfetch(`${API_8002}/api/extract`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ text, llmModelId: state.llmModelId, fairness }),
+        body: JSON.stringify({ text, llmModelId: state.llmModelId, fairness: false }),
       }),
     ]);
 
     state.kResult = kRes.status === 'fulfilled' ? kRes.value : { error: String(kRes.reason) };
     state.sResult = sRes.status === 'fulfilled' ? sRes.value : { error: String(sRes.reason) };
+    state.extracted = true;
     renderBody('kBody', state.kResult, 'KGraph');
     renderBody('sBody', state.sResult, 'Semantica');
 
-    // 抽取完成后自动评估两侧（同一裁判 = 8001 默认）
-    await Promise.all([evalSide('k'), evalSide('s')]);
-    document.getElementById('metaNote').textContent =
-      `语料 #${corpusId}「${corpus.title}」· 抽取模型 ${modelLabel()} · 评估复用 8001 同一裁判`;
+    note.className = 'meta-note ok';
+    note.innerHTML =
+      `✓ 抽取完成 —— 可先查看两侧结果，然后点右侧「开始对比」评估（语料 ${esc(corpus.title)} · 抽取模型 ${esc(modelLabel())}）。`;
   } catch (e) {
-    alert('对比失败: ' + e.message);
+    alert('抽取失败: ' + e.message);
+    note.className = 'meta-note';
+    note.textContent = '抽取失败，请重试。';
   } finally {
     document.getElementById('runBtn').disabled = false;
-    document.getElementById('exportBtn').disabled = false;
-    document.getElementById('reportBtn').disabled = false;
+    document.getElementById('evalBtn').disabled = !state.extracted;
+    document.getElementById('exportBtn').disabled = !state.extracted;
+    document.getElementById('reportBtn').disabled = !state.extracted;
+  }
+}
+
+/** 第二步：只对比评估（需要先抽取完成） */
+async function runEval() {
+  if (!state.extracted || !state.corpus) return alert('请先完成抽取');
+  document.getElementById('evalBtn').disabled = true;
+  const note = document.getElementById('metaNote');
+  note.className = 'meta-note running';
+  note.textContent = '对比评估中 —— 两侧同裁判、同指标抽样评估。';
+  try {
+    await Promise.all([evalSide('k'), evalSide('s')]);
+    note.className = 'meta-note ok';
+    note.innerHTML =
+      `✓ 对比完成 —— 唯一变量为抽取方法，可导出 JSON 或报告（裁判 ${esc(judgeLabel())}）。`;
+  } finally {
+    document.getElementById('evalBtn').disabled = false;
   }
 }
 
@@ -257,7 +414,7 @@ function modelLabel() {
 
 function renderBody(elId, res, label) {
   const el = document.getElementById(elId);
-  if (res.error) { el.innerHTML = `<div class="empty" style="color:var(--bad)">${label} 抽取失败<br><span style="font-size:12px">${esc(res.error.slice(0,300))}</span></div>`; return; }
+  if (res.error) { el.innerHTML = `<div class="empty" style="color:var(--bad)"><div class="big">✕</div>${label} 抽取失败<br><span style="font-size:12px">${esc(res.error.slice(0,300))}</span></div>`; return; }
   const tok = res.tokenConsumed ? res.tokenConsumed.toLocaleString() : '—';
   const entHtml = (res.entities || []).map(e =>
     `<tr><td>${esc(e.name)}</td><td>${esc(e.type)}${e.span && e.span.end > 0 ? '' : '<span class="type-chip">span缺失</span>'}</td><td>${e.confidence ?? '—'}</td></tr>`).join('');
@@ -278,10 +435,10 @@ function renderBody(elId, res, label) {
       <div class="stat"><div class="v">${((res.duration ?? 0) / 1000).toFixed(1)}s</div><div class="l">耗时</div></div>
       <div class="stat"><div class="v">${tok}</div><div class="l">Token</div></div>
     </div>
-    <div class="tbl-title">实体（${res.entities?.length ?? 0}）</div>
-    <table><tr><th>名称</th><th>类型</th><th>置信度</th></tr>${entHtml || '<tr><td colspan="3" class="empty">无</td></tr>'}</table>
-    <div class="tbl-title">关系（${res.relations?.length ?? 0}）</div>
-    <table><tr><th>头实体</th><th>谓词</th><th>尾实体</th><th>双时态</th><th>置信度</th><th>证据</th></tr>${relHtml || '<tr><td colspan="6" class="empty">无</td></tr>'}</table>
+    <div class="tbl-title">实体 <span class="n">（${res.entities?.length ?? 0}）</span></div>
+    <table><thead><tr><th>名称</th><th>类型</th><th>置信度</th></tr></thead><tbody>${entHtml || '<tr><td colspan="3" class="empty">无</td></tr>'}</tbody></table>
+    <div class="tbl-title">关系 <span class="n">（${res.relations?.length ?? 0}）</span></div>
+    <table><thead><tr><th>头实体</th><th>谓词</th><th>尾实体</th><th>双时态</th><th>置信度</th><th>证据</th></tr></thead><tbody>${relHtml || '<tr><td colspan="6" class="empty">无</td></tr>'}</tbody></table>
     <div class="raw-toggle" onclick="this.nextElementSibling.classList.toggle('show')">▸ 原始 JSON</div>
     <pre class="raw">${esc(JSON.stringify(res, null, 2))}</pre>`;
 }
@@ -292,7 +449,7 @@ async function evalSide(side) {
   if (!res || res.error || !state.corpus) return;
   // 两侧共用同一组选中指标（公平性：只跑两边都能出分的指标）
   const metrics = [...document.querySelectorAll('#metricBoxes input:checked')].map(i => i.value);
-  el.innerHTML = `<div class="loading"><span class="spinner"></span>评估中（${metrics.length} 个裁判指标）…</div>`;
+  el.innerHTML = `<div class="loading"><div class="spinner"></div><div>评估中（${metrics.length} 个裁判指标）…</div></div>`;
   const sampleSize = Number(document.getElementById('sampleSel').value);
   const judgeId = Number(document.getElementById('judgeSel').value) || null;
   try {
@@ -309,7 +466,7 @@ async function evalSide(side) {
     if (side === 'k') state.kEval = rep; else state.sEval = rep;
     renderEval(el, rep);
   } catch (e) {
-    el.innerHTML = `<div class="empty" style="color:var(--bad)">评估失败: ${esc(String(e.message).slice(0,200))}</div>`;
+    el.innerHTML = `<div class="empty" style="color:var(--bad)"><div class="big">✕</div>评估失败<br><span style="font-size:12px">${esc(String(e.message).slice(0,200))}</span></div>`;
   }
 }
 
@@ -330,20 +487,21 @@ function renderEval(el, rep) {
   const overall = rep.overall;
   const oc = overall === null || overall === undefined ? '' :
     overall >= 0.85 ? 'score-good' : overall >= 0.6 ? 'score-mid' : 'score-bad';
+  const ring = overall === null || overall === undefined ? '' :
+    overall >= 0.85 ? 'ring-good' : overall >= 0.6 ? 'ring-mid' : 'ring-bad';
   const intr = rep.intrinsic || {};
   el.innerHTML = `
-    <div class="eval-score-row">
-      <span class="eval-score ${oc}">${overall ?? '—'}</span>
-      <span style="color:var(--text-3);font-size:12px">综合得分（LLM 裁判均值）· 裁判 ${esc(rep.judgeModel || '默认')}</span>
+    <div class="eval-head">
+      <div class="score-ring ${ring}"><span class="v ${oc}">${overall ?? '—'}</span><span class="l">综合得分</span></div>
+      <div class="eval-meta">LLM 裁判均值（选中指标算术平均）<br>裁判模型：${esc(rep.judgeModel || '默认')}</div>
     </div>
-    <table>
-      <tr><th>LLM 裁判指标</th><th>得分</th><th>样本</th><th>结论</th></tr>
+    <table><thead><tr><th>LLM 裁判指标</th><th>得分</th><th>样本</th><th>结论</th></tr></thead><tbody>
       ${rows}
-    </table>
+    </tbody></table>
     <div class="tbl-title">内在指标</div>
-    <table><tr><th>孤立实体率</th><th>平均度</th><th>证据覆盖率</th><th>低置信率</th></tr>
+    <table><thead><tr><th>孤立实体率</th><th>平均度</th><th>证据覆盖率</th><th>低置信率</th></tr></thead><tbody>
       <tr><td>${fmtPct(intr.isolatedRate)}</td><td>${intr.avgDegree ?? '—'}</td>
-          <td>${fmtPct(intr.evidenceCoverage)}</td><td>${fmtPct(intr.lowConfRate)}</td></tr></table>`;
+          <td>${fmtPct(intr.evidenceCoverage)}</td><td>${fmtPct(intr.lowConfRate)}</td></tr></tbody></table>`;
 }
 function fmtPct(v) { return (v === null || v === undefined) ? '—' : (v * 100).toFixed(1) + '%'; }
 
@@ -351,12 +509,11 @@ function exportJson() {
   if (!state.corpus) return alert('尚无实验数据');
   const payload = {
     exportedAt: new Date().toISOString(),
-    experiment: 'KGraph vs Semantica 抽取对比',
+    experiment: 'KGraph vs Semantica 纯抽取方法对比（无后处理）',
     corpus: { id: state.corpus.id, title: state.corpus.title, charCount: state.corpus.content.length },
     extractionModel: modelLabel(),
     judgeModel: judgeLabel(),
     metrics: selectedMetrics(),
-    semanticaFairness: document.getElementById('fairnessSel').value === 'on',
     sampleSize: Number(document.getElementById('sampleSel').value),
     kgraph: { extraction: state.kResult, evaluation: state.kEval },
     semantica: { extraction: state.sResult, evaluation: state.sEval },
@@ -420,8 +577,8 @@ function exportReport() {
 - **裁判模型**：${judgeLabel()}
 - **评估指标**：${metrics.map(m => METRIC_NAMES[m] || m).join('、') || '全部'}
 - **抽样**：${document.getElementById('sampleSel').selectedOptions[0].text}
-- **Semantica 公平校验墙**：${document.getElementById('fairnessSel').value === 'on' ? '开启（对齐 KGraph W1-W5 后处理）' : '关闭（原生输出）'}
-- **入库**：两侧均不写 Neo4j（KGraph dryRun / Semantica 直出 JSON）
+- **对比口径**：纯抽取方法对比 —— 两侧均为原生抽取输出，不带任何后处理（KGraph 无 W1-W5 质量管道，Semantica 无公平校验墙）
+- **入库**：两侧均不写 Neo4j
 
 ## 结果对比
 
@@ -431,7 +588,7 @@ ${rows.join('\n')}
 
 ${ke && se ? `- 综合分差：KGraph ${ke.overall ?? '—'} vs Semantica ${se.overall ?? '—'}
 - 裁判模型：${esc(ke.judgeModel || '默认')}（两侧同裁判，模型差异已排除）
-- 唯一变量为抽取框架本身（两阶段 prompt、证据机制、后处理规则均按各自默认）` : '- 评估未完成，仅导出抽取数据'}
+- 唯一变量为抽取方法本身（两阶段 prompt、实体表硬约束 / typed 输出、证据机制均按各自原生形态）` : '- 评估未完成，仅导出抽取数据'}
 
 ---
 *由对比台自动生成 · 原始 JSON 可另行导出*

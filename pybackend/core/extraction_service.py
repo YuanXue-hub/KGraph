@@ -16,7 +16,8 @@
   阶段2 关系抽取：注入阶段1 实体表硬约束，主语/宾语必须命中实体表；
                   每条关系附证据句原文（evidenceText）
   代码校验层（0 次 LLM）：
-    · mention / expr / evidenceText 回原文 find() 定位生成 span（LLM 不输出数字偏移）
+    · 实体 evidenceText / 时间锚点 evidenceText 直接作为原文证据片段，不再 find() 定位 span
+    · 关系 evidenceText 直接作为证据有效性评估的唯一数据源，不再 find() 定位 span
     · 事件 type 归一化（统一为「事件」，语义靠 canonicalName 描述）
     · 关系主语/宾语引用检查（5 级解析：精确 → 别名 → 包含 → Jaccard → 占位）
     · subjectType/objectType 从实体表反查、vt_precision 从 ISO 格式推断
@@ -27,8 +28,9 @@ from __future__ import annotations
 
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.extraction_schema import (
     EvidenceSpan,
@@ -43,6 +45,7 @@ from core.prompt_builder import (
     build_relation_messages,
     format_entity_table,
 )
+from splitter.recursive import RecursiveStrategy
 
 # 合法锚点类型（与 graph_writer 保持一致）
 _VALID_ANCHOR_TYPES = {"DATE", "DATERANGE", "RELATIVE", "NOW", "OPEN", "UNKNOWN"}
@@ -169,28 +172,21 @@ def _parse_nodes(
     for e in node_json.get("entities") or []:
         if not isinstance(e, dict):
             continue
-        mention = str(e.get("mention") or "").strip()
+        evidence_text = str(e.get("evidenceText") or e.get("mention") or "").strip()
         canonical = str(e.get("canonicalName") or "").strip()
         etype = str(e.get("type") or "").strip()
         if not canonical or not etype:
             rep.add("WARNING", "NODE_ENTITY_DIRTY_DROPPED",
                     f"实体核心字段为空已丢弃: {str(e)[:80]}")
             continue
-        if not mention:
-            mention = canonical
+        if not evidence_text:
+            evidence_text = canonical
         etype = _normalize_event_type(etype, rep, canonical)
-        # span 由代码回原文定位（LLM 不输出数字偏移）
-        span = _locate_span(text, mention)
-        if span is None:
-            span = _locate_span(text, canonical)
-        if span is None:
-            rep.add("WARNING", "NODE_ENTITY_SPAN_MISS",
-                    f"实体 '{canonical}' 的 mention 未在原文中定位到，span 置为 (0,0)")
-            span = EvidenceSpan(start=0, end=0)
+        # evidenceSpans 不再用 find() 反推坐标（evidenceText 本身即原文证据片段），置空
         if canonical not in name_set:
             name_set[canonical] = etype
             entities.append(ExtractedEntity(
-                mention=mention, canonicalName=canonical, type=etype, span=span,
+                evidenceText=evidence_text, canonicalName=canonical, type=etype, evidenceSpans=[],
             ))
 
     # ---- 指代消解链（别名并入映射表，不建独立节点）----
@@ -210,8 +206,8 @@ def _parse_nodes(
     for a in node_json.get("timeAnchors") or []:
         if not isinstance(a, dict):
             continue
-        expr = str(a.get("expr") or "").strip()
-        if not expr:
+        evidence_text = str(a.get("evidenceText") or a.get("expr") or "").strip()
+        if not evidence_text:
             continue
         atype = str(a.get("type") or "UNKNOWN").strip().upper()
         if atype not in _VALID_ANCHOR_TYPES:
@@ -221,19 +217,15 @@ def _parse_nodes(
             has_rel = bool(str(a.get("relativeAnchor") or "").strip())
             if not (has_norm or has_rel):
                 rep.add("WARNING", "NODE_ANCHOR_RELATIVE_EMPTY_DROPPED",
-                        f"RELATIVE 锚点 '{expr}' 无 normISO 且无 relativeAnchor，已丢弃")
+                        f"RELATIVE 锚点 '{evidence_text}' 无 normISO 且无 relativeAnchor，已丢弃")
                 continue
-        span = _locate_span(text, expr)
-        if span is None:
-            rep.add("WARNING", "NODE_ANCHOR_SPAN_MISS",
-                    f"锚点 '{expr}' 未在原文中定位到，span 置为 (0,0)")
-            span = EvidenceSpan(start=0, end=0)
+        # evidenceSpans 不再用 find() 反推坐标（evidenceText 本身即原文证据片段），置空
         anchors.append(TimeAnchor(
-            expr=expr, type=atype,
+            evidenceText=evidence_text, type=atype,
             normISO=str(a.get("normISO") or "").strip() or None,
             precision=str(a.get("precision") or "unknown").strip() or "unknown",
             relativeAnchor=str(a.get("relativeAnchor") or "").strip() or None,
-            span=span,
+            evidenceSpans=[],
         ))
 
     doc_time = str(node_json.get("docTime") or "").strip() or None
@@ -322,12 +314,13 @@ def _parse_relations(
                     f"自环关系已丢弃: {subj} -[{pred}]-> {obj}")
             continue
 
-        # 证据句必须能在原文中定位（关系无证据不可信 → 丢弃）
+        # 证据句：LLM 直接输出的原文片段（必须是原文子串，禁止改写）。
+        # 不再用 find() 反推 span —— evidenceText 即评估 evidenceValidity 的唯一数据源；
+        # evidenceSpans 留空（前端高亮用坐标，后续如需可补）。
         evidence = str(r.get("evidenceText") or "").strip()
-        ev_span = _locate_span(text, evidence) if evidence else None
-        if ev_span is None:
+        if not evidence:
             rep.add("WARNING", "REL_EVIDENCE_MISS_DROPPED",
-                    f"关系证据句未在原文中定位到已丢弃: {subj} -[{pred}]-> {obj}")
+                    f"关系无 evidenceText 已丢弃: {subj} -[{pred}]-> {obj}")
             continue
 
         conf = r.get("confidence")
@@ -352,7 +345,8 @@ def _parse_relations(
                     vt_precision_from=_infer_precision(vt_from or relations[idx].vt_from),
                     vt_precision_to=_infer_precision(vt_to or relations[idx].vt_to),
                     confidence=conf,
-                    evidenceSpans=[ev_span],
+                    evidenceText=evidence,
+                    evidenceSpans=[],
                 )
                 rep.add("WARNING", "REL_TRIPLE_DEDUP_REPLACED",
                         f"重复三元组 {subj}-[{pred}]->{obj} 替换为更高置信度 conf={conf:.2f}")
@@ -372,7 +366,8 @@ def _parse_relations(
             vt_precision_from=_infer_precision(vt_from),
             vt_precision_to=_infer_precision(vt_to),
             confidence=conf,
-            evidenceSpans=[ev_span],
+            evidenceText=evidence,
+            evidenceSpans=[],
         ))
     return relations
 
@@ -404,12 +399,21 @@ def extract_entities(
 ) -> EntityStageResult:
     """阶段1：节点抽取（静态实体 + 事件实体 + 指代消解链 + 时间锚点）。
 
-    1 次 LLM 调用；mention 回原文定位生成 span；事件 type 归一化。
+    1 次 LLM 调用；事件 type 归一化；evidenceSpans 置空（evidenceText 即原文证据）。
     未抽到任何实体时抛 ValueError（关系抽取无从进行）。
 
     可单独复用：只需实体（如词典构建、实体边界评估）时不必跑关系阶段。
+
+    分块：文本超过模型上下文阈值时自动分块并发抽取，结果合并后返回。
     """
     rep = rep or QualityReport()
+
+    chunk_size = _compute_chunk_size(llm_client, "entities")
+    if len(text) > chunk_size:
+        rep.add("INFO", "CHUNK_ENABLED",
+                f"文本长度 {len(text)} > 阈值 {chunk_size}，阶段1 分块抽取")
+        return extract_entities_chunked(llm_client, text, ontology, rep)
+
     node_msgs = build_node_messages(text=text, ontology=ontology)
     node_json, tokens = _llm_call_with_retry(llm_client, node_msgs)
     entities, anchors, alias_map, doc_time = _parse_nodes(node_json, text, rep)
@@ -444,8 +448,18 @@ def extract_relations(
 
     返回 (relations, tokens)。可单独复用：换 prompt/模型做关系阶段 A/B 对比时，
     传入同一 stage1 结果即可保证实体侧变量受控。
+
+    分块：文本超过模型上下文阈值时自动分块并发抽取，关系去重后返回。
     """
     rep = rep or QualityReport()
+
+    chunk_size = _compute_chunk_size(llm_client, "relations", len(stage1.entities))
+    if len(text) > chunk_size:
+        rep.add("INFO", "CHUNK_ENABLED",
+                f"文本长度 {len(text)} > 阈值 {chunk_size}，阶段2 分块抽取"
+                f"（实体数 {len(stage1.entities)}）")
+        return extract_relations_chunked(llm_client, text, stage1, ontology, rep)
+
     name_set = stage1.name_set
     entity_table = format_entity_table(
         [{"canonicalName": n, "type": t} for n, t in name_set.items()]
@@ -457,3 +471,234 @@ def extract_relations(
     relations = _parse_relations(rel_json, text, name_set, stage1.alias_map, rep)
     rep.stats["relations_extracted"] = len(relations)
     return relations, tokens
+
+
+# ============================================================================
+# 分块抽取（超长文本自动分块 + 并发抽取 + 结果合并）
+# ============================================================================
+
+_MIN_CHUNK_SIZE = 2000     # 最小分块字符数（再小语义不完整）
+_MAX_CHUNK_SIZE = 100000   # 最大分块字符数（防止极端配置）
+_MAX_WORKERS = 6           # 并发上限
+_CHARS_PER_TOKEN = 0.6     # 中文 token 换算系数（1 token ≈ 1.6 中文字）
+_SAFETY_FACTOR = 0.7       # 安全系数（留 30% 余量防截断）
+_PROMPT_OVERHEAD = 3000    # prompt 固定开销 tokens
+_STAGE1_OUTPUT_BUDGET = 4000   # 阶段1 输出 token 预算
+_STAGE2_OUTPUT_BUDGET = 8000   # 阶段2 输出 token 预算
+_ENTITY_TABLE_TOKENS_PER = 50  # 每个实体在实体表中占用的 tokens
+
+
+def _compute_chunk_size(llm_client: LLMClient, stage: str, entity_count: int = 0) -> int:
+    """根据模型上下文窗口动态计算分块大小（字符数）。
+
+    chunk_size = (context_window - prompt_overhead - output_budget - entity_table_tokens)
+                 × chars_per_token × safety_factor
+    """
+    context_window = getattr(llm_client, "context_window", 32000)
+    output_budget = _STAGE1_OUTPUT_BUDGET if stage == "entities" else _STAGE2_OUTPUT_BUDGET
+    entity_table_tokens = entity_count * _ENTITY_TABLE_TOKENS_PER if stage == "relations" else 0
+    available_tokens = context_window - _PROMPT_OVERHEAD - output_budget - entity_table_tokens
+    chunk_size = int(available_tokens * _CHARS_PER_TOKEN * _SAFETY_FACTOR)
+    return max(_MIN_CHUNK_SIZE, min(_MAX_CHUNK_SIZE, chunk_size))
+
+
+def _split_text(text: str, chunk_size: int) -> List[str]:
+    """递归分块，10% overlap（最大 2000 字符）。"""
+    overlap = min(int(chunk_size * 0.1), 2000)
+    chunks = RecursiveStrategy().split(text, chunk_size, overlap)
+    return [c.content for c in chunks]
+
+
+def run_concurrent(fn: Callable, items: List[Any], *args, **kwargs) -> List[Any]:
+    """并发执行 fn(item, *args, **kwargs)，按原始顺序返回结果。
+
+    失败的 item 结果为 None，不阻塞其他 item。
+    """
+    results: List[Any] = [None] * len(items)
+    if not items:
+        return results
+    with ThreadPoolExecutor(max_workers=min(len(items), _MAX_WORKERS)) as executor:
+        future_to_idx = {
+            executor.submit(fn, item, *args, **kwargs): i
+            for i, item in enumerate(items)
+        }
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                results[idx] = future.result()
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                results[idx] = None
+    return results
+
+
+def _extract_single_entity(
+    chunk_text: str, llm_client: LLMClient, ontology: Optional[Dict[str, Any]],
+) -> EntityStageResult:
+    """单 chunk 阶段1 抽取（供并发调用）。"""
+    rep = QualityReport()
+    try:
+        msgs = build_node_messages(text=chunk_text, ontology=ontology)
+        node_json, tokens = _llm_call_with_retry(llm_client, msgs)
+        entities, anchors, alias_map, doc_time = _parse_nodes(node_json, chunk_text, rep)
+        return EntityStageResult(
+            entities=entities, time_anchors=anchors,
+            alias_map=alias_map, doc_time=doc_time, tokens=tokens,
+        )
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return EntityStageResult(entities=[], time_anchors=[], alias_map={}, tokens=0)
+
+
+def _extract_single_relation(
+    chunk_text: str, llm_client: LLMClient, stage1: EntityStageResult,
+    ontology: Optional[Dict[str, Any]],
+) -> List[ExtractedRelation]:
+    """单 chunk 阶段2 抽取（注入全局实体表，供并发调用）。"""
+    try:
+        name_set = stage1.name_set
+        entity_table = format_entity_table(
+            [{"canonicalName": n, "type": t} for n, t in name_set.items()]
+        )
+        msgs = build_relation_messages(
+            text=chunk_text, entity_table_str=entity_table, ontology=ontology,
+        )
+        rel_json, _tokens = _llm_call_with_retry(llm_client, msgs)
+        return _parse_relations(rel_json, chunk_text, name_set, stage1.alias_map, QualityReport())
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+def merge_stage1(chunk_results: List[EntityStageResult], rep: QualityReport) -> EntityStageResult:
+    """合并多个 chunk 的阶段1 结果。
+
+    · 实体：canonicalName 去重，evidenceText 用 | 拼接，type 冲突保留首次 + WARNING
+    · 时间锚点：直接拼接
+    · 指代链：别名取并集
+    """
+    merged_entities: Dict[str, ExtractedEntity] = {}
+    merged_anchors: List[TimeAnchor] = []
+    merged_alias_map: Dict[str, str] = {}
+    total_tokens = 0
+
+    for result in chunk_results:
+        if result is None or result is None:
+            continue
+        total_tokens += result.tokens
+        for e in result.entities:
+            key = e.canonicalName
+            if key not in merged_entities:
+                merged_entities[key] = e
+            else:
+                existing = merged_entities[key]
+                if e.type != existing.type:
+                    rep.add("WARNING", "W3_TYPE_CONFLICT",
+                            f"实体 '{key}' 类型冲突: {existing.type} vs {e.type}，"
+                            f"保留 {existing.type}")
+                if e.evidenceText and e.evidenceText not in existing.evidenceText.split(" | "):
+                    existing.evidenceText = (
+                        f"{existing.evidenceText} | {e.evidenceText}"
+                        if existing.evidenceText else e.evidenceText
+                    )
+        merged_anchors.extend(result.time_anchors)
+        for alias, canonical in result.alias_map.items():
+            if alias not in merged_alias_map:
+                merged_alias_map[alias] = canonical
+
+    doc_time = next((r.doc_time for r in chunk_results if r and r.doc_time), None)
+    return EntityStageResult(
+        entities=list(merged_entities.values()),
+        time_anchors=merged_anchors,
+        alias_map=merged_alias_map,
+        doc_time=doc_time,
+        tokens=total_tokens,
+    )
+
+
+def merge_stage2(
+    chunk_relations_list: List[List[ExtractedRelation]], rep: QualityReport
+) -> List[ExtractedRelation]:
+    """合并多个 chunk 的阶段2 关系。
+
+    · 去重键：(subject, predicate, object)
+    · confidence 取最大值
+    · evidenceText 用 | 拼接
+    · vt_from 取最早，vt_to 取最晚
+    """
+    merged: Dict[Tuple[str, str, str], ExtractedRelation] = {}
+    for rels in chunk_relations_list:
+        if not rels:
+            continue
+        for r in rels:
+            key = (r.subject.strip(), r.predicate.strip(), r.object.strip())
+            if key not in merged:
+                merged[key] = r
+            else:
+                existing = merged[key]
+                if r.confidence > existing.confidence:
+                    existing.confidence = r.confidence
+                if r.evidenceText and r.evidenceText not in existing.evidenceText:
+                    existing.evidenceText = (
+                        f"{existing.evidenceText} | {r.evidenceText}"
+                        if existing.evidenceText else r.evidenceText
+                    )
+                if r.vt_from and (not existing.vt_from or r.vt_from < existing.vt_from):
+                    existing.vt_from = r.vt_from
+                if r.vt_to and (not existing.vt_to or r.vt_to > existing.vt_to):
+                    existing.vt_to = r.vt_to
+    return list(merged.values())
+
+
+def extract_entities_chunked(
+    llm_client: LLMClient,
+    text: str,
+    ontology: Optional[Dict[str, Any]],
+    rep: QualityReport,
+) -> EntityStageResult:
+    """阶段1 分块并发抽取 + 合并。"""
+    chunk_size = _compute_chunk_size(llm_client, "entities")
+    chunks = _split_text(text, chunk_size)
+    rep.add("INFO", "CHUNK_STAGE1",
+            f"阶段1 分 {len(chunks)} 块并发抽取（chunk_size≈{chunk_size}）")
+
+    chunk_results = run_concurrent(_extract_single_entity, chunks, llm_client, ontology)
+    valid = [r for r in chunk_results if r is not None]
+    if not valid:
+        raise ValueError("所有 chunk 阶段1 抽取失败，请检查 LLM 连接")
+
+    merged = merge_stage1(valid, rep)
+    rep.add("INFO", "PIPELINE_TWO_STAGE",
+            f"[分块] 阶段1 合并后: 实体×{len(merged.entities)}、"
+            f"时间锚点×{len(merged.time_anchors)}、指代链别名×{len(merged.alias_map)}")
+
+    if not merged.entities:
+        raise ValueError(f"阶段1 分块抽取未得到任何实体。issues={rep.stats}")
+    return merged
+
+
+def extract_relations_chunked(
+    llm_client: LLMClient,
+    text: str,
+    stage1: EntityStageResult,
+    ontology: Optional[Dict[str, Any]],
+    rep: QualityReport,
+) -> Tuple[List[ExtractedRelation], int]:
+    """阶段2 分块并发抽取（注入全局实体表）+ 关系去重合并。"""
+    chunk_size = _compute_chunk_size(llm_client, "relations", len(stage1.entities))
+    chunks = _split_text(text, chunk_size)
+    rep.add("INFO", "CHUNK_STAGE2",
+            f"阶段2 分 {len(chunks)} 块并发抽取（chunk_size≈{chunk_size}，"
+            f"全局实体数 {len(stage1.entities)}）")
+
+    chunk_relations = run_concurrent(
+        _extract_single_relation, chunks, llm_client, stage1, ontology
+    )
+    relations = merge_stage2(chunk_relations, rep)
+    rep.stats["relations_extracted"] = len(relations)
+    # token 统计：阶段2 按 chunk 数估算（实际 tokens 在 _extract_single_relation 中未返回）
+    estimated_tokens = 0
+    return relations, estimated_tokens

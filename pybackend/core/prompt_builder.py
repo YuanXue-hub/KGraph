@@ -2,7 +2,7 @@
 
 架构（2 次 LLM 调用，聚焦实体 + 关系完整性）：
   阶段1 build_node_messages：抽「节点」—— 静态实体 + 事件实体 + 指代消解链 + 时间锚点
-         · 实体只填 mention/canonicalName/type，不填数字 span（span 由代码 find() 定位）
+         · 实体只填 evidenceText/canonicalName/type（evidenceText 即原文字面片段，不填数字 span）
          · 事件实体 type 统一为「事件」，语义全靠 canonicalName 自包含描述
          · 指代词（该院/该公司）不放 entities，放 coreferenceChains
   阶段2 build_relation_messages：抽「关系」—— 注入阶段1 实体表做硬约束
@@ -170,13 +170,13 @@ def build_node_messages(
 {{
   "docTime": "文档成文时间 ISO 字符串或 null",
   "entities": [
-    {{"mention": "原文片段", "canonicalName": "归一化标准名", "type": "实体类型"}}
+    {{"evidenceText": "原文片段", "canonicalName": "归一化标准名", "type": "实体类型"}}
   ],
   "coreferenceChains": [
     {{"canonicalName": "规范实体名（必须与 entities 中某条一致）", "aliases": ["简称1", "缩写2", "别名3", "指代词4"]}}
   ],
   "timeAnchors": [
-    {{"expr": "原文时间表达式逐字", "type": "DATE|DATERANGE|RELATIVE|NOW|OPEN|UNKNOWN", "normISO": "标准ISO或null", "precision": "day|month|quarter|year|unknown", "relativeAnchor": "RELATIVE时写依赖锚点，否则null"}}
+    {{"evidenceText": "原文时间表达式逐字", "type": "DATE|DATERANGE|RELATIVE|NOW|OPEN|UNKNOWN", "normISO": "标准ISO或null", "precision": "day|month|quarter|year|unknown", "relativeAnchor": "RELATIVE时写依赖锚点，否则null"}}
   ]
 }}
 ```
@@ -241,6 +241,8 @@ def build_relation_messages(
 
 ### 指令
 1. 仅从下面提供的文本中提取关系，证据句必须逐字来自原文。
+   **evidenceText 硬性要求**：必须是原文中连续的子串，禁止改写、总结、缩写或拼接不连续片段；
+   即使事件实体名是总结短语（如「刘备三顾茅庐拜访诸葛亮」），其关系的 evidenceText 仍须填原文中支撑该关系的原句。
 2. 不要包含上述小样本示例中的任何关系。
 3. 使用实体表中的实体名作为 subject / object 的参考（命中即写完全相同的 canonicalName）。
 4. 谓词优先从词表中选择，允许语义等价变体；禁止使用「实施」「涉及对象」这类不携带关系语义的泛化谓词，「涉及/关联/提及」仅作兜底。

@@ -53,8 +53,12 @@ def compute_intrinsic(text: str, entities: List[Dict[str, Any]],
             rel_entities.add(t)
     isolated = [n for n in ent_names if n not in rel_entities]
 
-    # 证据覆盖率：存在非平凡 evidenceSpans 的关系占比
+    # 证据覆盖率：存在非平凡 evidenceSpans 或非空 evidenceText 的关系占比
+    # （evidenceText 是 LLM 抽取时直接产出的原文子串，是证据有效性的可信源；
+    #  evidenceSpans 仅用于前端高亮坐标，find() 已移除故可能为空）
     def _has_evidence(r: Dict[str, Any]) -> bool:
+        if str(r.get("evidenceText") or "").strip():
+            return True
         for s in r.get("evidenceSpans") or []:
             try:
                 start, end = int(s.get("start", 0)), int(s.get("end", -1))
@@ -256,7 +260,15 @@ def judge_safe(llm_client: LLMClient, metric_label: str, criteria: str,
 
 
 def evidence_text(text: str, r: Dict[str, Any]) -> str:
-    """从 evidenceSpans 切出证据片段（最多取前 2 段拼接）。"""
+    """获取证据片段：优先使用 LLM 原始输出的 evidenceText；缺失时回退到 evidenceSpans 切原文。
+
+    设计原则：evidenceText 是 LLM 抽取时直接产出的原文子串，是证据有效性评估的唯一可信源；
+    evidenceSpans 仅在 evidenceText 缺失时作为兜底，避免 find() 反推引入的定位偏差。
+    """
+    ev = str(r.get("evidenceText") or "").strip()
+    if ev:
+        return ev
+    # 兜底：从 evidenceSpans 切出证据片段（最多取前 2 段拼接）
     parts: List[str] = []
     for s in r.get("evidenceSpans") or []:
         try:

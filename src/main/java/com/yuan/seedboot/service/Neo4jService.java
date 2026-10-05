@@ -32,13 +32,16 @@ public class Neo4jService {
     private Driver neo4jDriver;
 
     /**
-     * 获取节点与边（按 modelId 限制，支持 limit）
+     * 获取节点与边（按 modelId 限制，支持 limit，支持时间过滤）
      *
-     * @param modelId 模型 id
-     * @param limit   最多返回节点数
+     * @param modelId  模型 id
+     * @param limit    最多返回节点数
+     * @param asOf     时间点快照（如 "2023"），为空则不过滤
+     * @param fromTime 时间范围起点（如 "2020"），为空则不过滤
+     * @param toTime   时间范围终点（如 "2025"），为空则不过滤
      * @return {nodes: [...], edges: [...]}
      */
-    public Map<String, Object> getNodes(Long modelId, int limit) {
+    public Map<String, Object> getNodes(Long modelId, int limit, String asOf, String fromTime, String toTime) {
         Map<String, Object> params = new HashMap<>();
         params.put("modelId", modelId);
         params.put("limit", limit);
@@ -50,7 +53,7 @@ public class Neo4jService {
                 record -> nodeToMap(record.get("n").asNode())
         );
 
-        // 查询边（限制在已查询节点范围内）
+        // 查询边（限制在已查询节点范围内，支持时间过滤）
         List<String> nodeIds = nodes.stream()
                 .map(n -> (String) n.get("elementId"))
                 .collect(Collectors.toList());
@@ -59,10 +62,12 @@ public class Neo4jService {
         if (!nodeIds.isEmpty()) {
             Map<String, Object> edgeParams = new HashMap<>();
             edgeParams.put("nodeIds", nodeIds);
+            String temporalWhere = buildTemporalWhere(asOf, fromTime, toTime, edgeParams);
             edges = executeQuery(
                     "MATCH (a:Entity)-[r]->(b:Entity) " +
                             "WHERE elementId(a) IN $nodeIds AND elementId(b) IN $nodeIds " +
-                            "RETURN a, r, b",
+                            temporalWhere +
+                            " RETURN a, r, b",
                     edgeParams,
                     record -> buildEdge(record.get("a").asNode(), record.get("r").asRelationship(), record.get("b").asNode())
             );
@@ -75,17 +80,21 @@ public class Neo4jService {
     }
 
     /**
-     * 获取邻居节点与边（按 nodeId）
+     * 获取邻居节点与边（按 nodeId，支持时间过滤）
      *
-     * @param nodeId 节点 elementId
+     * @param nodeId   节点 elementId
+     * @param asOf     时间点快照
+     * @param fromTime 时间范围起点
+     * @param toTime   时间范围终点
      * @return {nodes: [...], edges: [...]}
      */
-    public Map<String, Object> getNeighbors(String nodeId) {
+    public Map<String, Object> getNeighbors(String nodeId, String asOf, String fromTime, String toTime) {
         Map<String, Object> params = new HashMap<>();
         params.put("nodeId", nodeId);
+        String temporalWhere = buildTemporalWhere(asOf, fromTime, toTime, params);
 
         List<Map<String, Object>> records = executeQuery(
-                "MATCH (n:Entity)-[r]-(m:Entity) WHERE elementId(n) = $nodeId RETURN n, r, m",
+                "MATCH (n:Entity)-[r]-(m:Entity) WHERE elementId(n) = $nodeId " + temporalWhere + " RETURN n, r, m",
                 params,
                 record -> {
                     Map<String, Object> row = new HashMap<>();
@@ -127,13 +136,16 @@ public class Neo4jService {
     }
 
     /**
-     * 搜索节点与边（按名称模糊查询）
+     * 搜索节点与边（按名称模糊查询，支持时间过滤）
      *
-     * @param modelId 模型 id
-     * @param keyword 关键词
+     * @param modelId  模型 id
+     * @param keyword  关键词
+     * @param asOf     时间点快照
+     * @param fromTime 时间范围起点
+     * @param toTime   时间范围终点
      * @return {nodes: [...], edges: [...]}
      */
-    public Map<String, Object> searchNodes(Long modelId, String keyword) {
+    public Map<String, Object> searchNodes(Long modelId, String keyword, String asOf, String fromTime, String toTime) {
         Map<String, Object> params = new HashMap<>();
         params.put("modelId", modelId);
         params.put("keyword", keyword);
@@ -150,15 +162,17 @@ public class Neo4jService {
                 .map(n -> (String) n.get("elementId"))
                 .collect(Collectors.toList());
 
-        // 查询边（只查询搜索到的节点之间的边）
+        // 查询边（只查询搜索到的节点之间的边，支持时间过滤）
         List<Map<String, Object>> edges = new ArrayList<>();
         if (!nodeIds.isEmpty()) {
             Map<String, Object> edgeParams = new HashMap<>();
             edgeParams.put("nodeIds", nodeIds);
+            String temporalWhere = buildTemporalWhere(asOf, fromTime, toTime, edgeParams);
             edges = executeQuery(
                     "MATCH (a:Entity)-[r]->(b:Entity) " +
                             "WHERE elementId(a) IN $nodeIds AND elementId(b) IN $nodeIds " +
-                            "RETURN a, r, b",
+                            temporalWhere +
+                            " RETURN a, r, b",
                     edgeParams,
                     record -> buildEdge(record.get("a").asNode(), record.get("r").asRelationship(), record.get("b").asNode())
             );
@@ -623,6 +637,34 @@ public class Neo4jService {
     }
 
     // ======================== 以下是图谱探索方法 ========================
+
+    /**
+     * 构建时态过滤 WHERE 子句。
+     * 空字符串的 vt_from / vt_to 视为永久有效，不被过滤。
+     *
+     * @param asOf     时间点快照（如 "2023"），为空则不添加该条件
+     * @param fromTime 时间范围起点，为空则不添加
+     * @param toTime   时间范围终点，为空则不添加
+     * @param params   参数 Map，会按需填入 as_of / from_time / to_time
+     * @return WHERE 片段（以 "AND " 开头，无时间条件时返回空串）
+     */
+    private String buildTemporalWhere(String asOf, String fromTime, String toTime, Map<String, Object> params) {
+        StringBuilder sb = new StringBuilder();
+        if (asOf != null && !asOf.isBlank()) {
+            sb.append(" AND (r.vt_from = '' OR r.vt_from <= $as_of)");
+            sb.append(" AND (r.vt_to = '' OR r.vt_to >= $as_of)");
+            params.put("as_of", asOf.trim());
+        }
+        if (fromTime != null && !fromTime.isBlank()) {
+            sb.append(" AND (r.vt_to = '' OR r.vt_to >= $from_time)");
+            params.put("from_time", fromTime.trim());
+        }
+        if (toTime != null && !toTime.isBlank()) {
+            sb.append(" AND (r.vt_from = '' OR r.vt_from <= $to_time)");
+            params.put("to_time", toTime.trim());
+        }
+        return sb.toString();
+    }
 
     /**
      * 通用查询执行方法

@@ -26,30 +26,39 @@ public class GraphExploreController {
     private PythonServiceClient pythonServiceClient;
 
     @GetMapping("/nodes")
-    @Operation(summary = "获取节点与边（按 modelId, 支持 limit）")
+    @Operation(summary = "获取节点与边（按 modelId, 支持 limit，支持时间过滤）")
     public BaseResponse<Map<String, Object>> getNodes(long modelId,
-                                                       @RequestParam(defaultValue = "100") int limit) {
+                                                       @RequestParam(defaultValue = "100") int limit,
+                                                       @RequestParam(required = false) String asOf,
+                                                       @RequestParam(required = false) String fromTime,
+                                                       @RequestParam(required = false) String toTime) {
         ThrowUtils.throwIf(modelId <= 0, ErrorCode.PARAMS_ERROR);
         ThrowUtils.throwIf(limit <= 0 || limit > 1000, ErrorCode.PARAMS_ERROR, "limit 范围 1-1000");
-        Map<String, Object> data = neo4jService.getNodes(modelId, limit);
+        Map<String, Object> data = neo4jService.getNodes(modelId, limit, asOf, fromTime, toTime);
         return ResultUtils.success(data);
     }
 
     @GetMapping("/neighbors")
-    @Operation(summary = "获取邻居节点与边（按 nodeId）")
-    public BaseResponse<Map<String, Object>> getNeighbors(@RequestParam String nodeId) {
+    @Operation(summary = "获取邻居节点与边（按 nodeId，支持时间过滤）")
+    public BaseResponse<Map<String, Object>> getNeighbors(@RequestParam String nodeId,
+                                                           @RequestParam(required = false) String asOf,
+                                                           @RequestParam(required = false) String fromTime,
+                                                           @RequestParam(required = false) String toTime) {
         ThrowUtils.throwIf(nodeId == null || nodeId.isBlank(), ErrorCode.PARAMS_ERROR);
-        Map<String, Object> data = neo4jService.getNeighbors(nodeId);
+        Map<String, Object> data = neo4jService.getNeighbors(nodeId, asOf, fromTime, toTime);
         return ResultUtils.success(data);
     }
 
     @GetMapping("/search")
-    @Operation(summary = "搜索节点（按名称模糊查询）")
+    @Operation(summary = "搜索节点（按名称模糊查询，支持时间过滤）")
     public BaseResponse<Map<String, Object>> searchNodes(long modelId,
-                                                          @RequestParam String keyword) {
+                                                          @RequestParam String keyword,
+                                                          @RequestParam(required = false) String asOf,
+                                                          @RequestParam(required = false) String fromTime,
+                                                          @RequestParam(required = false) String toTime) {
         ThrowUtils.throwIf(modelId <= 0, ErrorCode.PARAMS_ERROR);
         ThrowUtils.throwIf(keyword == null || keyword.isBlank(), ErrorCode.PARAMS_ERROR);
-        Map<String, Object> data = neo4jService.searchNodes(modelId, keyword);
+        Map<String, Object> data = neo4jService.searchNodes(modelId, keyword, asOf, fromTime, toTime);
         return ResultUtils.success(data);
     }
 

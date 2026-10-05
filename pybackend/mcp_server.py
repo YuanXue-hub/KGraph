@@ -138,6 +138,7 @@ def kg_extract_full(
         payload = LlmExtractionPayload(
             docTime=stage1.doc_time, entities=stage1.entities,
             timeAnchors=stage1.time_anchors, relations=relations, causalEdges=[],
+            aliasMap=stage1.alias_map,
         )
         if not skip_pipeline:
             payload, rep2 = run_quality_pipeline(payload, text)

@@ -1,6 +1,16 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
+
+
+# 各供应商默认上下文窗口（tokens），数据库 context_window 为 NULL 时兜底
+PROVIDER_CONTEXT_DEFAULTS: Dict[str, int] = {
+    "deepseek": 64000,
+    "qwen": 128000,
+    "glm": 128000,
+    "openai": 128000,
+    "ollama": 32000,
+}
 
 
 class LLMClient:
@@ -9,6 +19,15 @@ class LLMClient:
     def __init__(self, config: Dict[str, Any]):
         model_cfg = config.get("model", {})
         self.model_name = model_cfg.get("model_name")
+        self.provider = model_cfg.get("provider") or ""
+        # context_window：优先用数据库配置，否则按供应商默认，未知供应商保守 32K
+        cw = model_cfg.get("context_window")
+        if cw:
+            self.context_window = int(cw)
+        else:
+            self.context_window = PROVIDER_CONTEXT_DEFAULTS.get(
+                (self.provider or "").lower(), 32000
+            )
         timeout = float(model_cfg.get("timeout_sec", 120.0))
         max_retries = int(model_cfg.get("max_retries", 1))
         self.client = OpenAI(

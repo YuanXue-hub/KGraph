@@ -1,0 +1,2112 @@
+{
+  "entities": [
+    {
+      "name": "北京星辰科技有限公司",
+      "evidenceText": "北京星辰科技有限公司",
+      "type": "公司",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "上海云帆信息技术有限公司",
+      "evidenceText": "上海云帆信息技术有限公司",
+      "type": "公司",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京市君合律师事务所",
+      "evidenceText": "北京市君合律师事务所",
+      "type": "组织",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京市中伦律师事务所",
+      "evidenceText": "北京市中伦律师事务所",
+      "type": "组织",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京国信知识产权鉴定中心",
+      "evidenceText": "北京国信知识产权鉴定中心",
+      "type": "组织",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京市高级人民法院",
+      "evidenceText": "北京市高级人民法院",
+      "type": "组织",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "公安机关",
+      "evidenceText": "公安机关",
+      "type": "组织",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "张伟（星辰公司法定代表人）",
+      "evidenceText": "法定代表人：张伟",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "李明",
+      "evidenceText": "李明，北京市君合律师事务所律师",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华",
+      "evidenceText": "被告：刘建华",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "王芳",
+      "evidenceText": "王芳，北京市中伦律师事务所律师",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "陈晓东",
+      "evidenceText": "法定代表人：陈晓东",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "王建国",
+      "evidenceText": "审判长：王建国",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "李晓梅",
+      "evidenceText": "审判员：李晓梅",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "张伟（审判员）",
+      "evidenceText": "审判员：张伟",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "陈静",
+      "evidenceText": "书记员：陈静",
+      "type": "人物",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京市海淀区中关村科技园8号楼",
+      "evidenceText": "住所地北京市海淀区中关村科技园8号楼",
+      "type": "地点",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京市朝阳区望京新城12号楼3单元501室",
+      "evidenceText": "住北京市朝阳区望京新城12号楼3单元501室",
+      "type": "地点",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "上海市浦东新区张江高科技园区3号楼",
+      "evidenceText": "住所地上海市浦东新区张江高科技园区3号楼",
+      "type": "地点",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京市",
+      "evidenceText": "北京市海淀区",
+      "type": "地点",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "上海市",
+      "evidenceText": "上海市浦东新区",
+      "type": "地点",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "中关村科技园",
+      "evidenceText": "中关村科技园8号楼",
+      "type": "地点",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "望京新城",
+      "evidenceText": "望京新城12号楼",
+      "type": "地点",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "张江高科技园区",
+      "evidenceText": "张江高科技园区3号楼",
+      "type": "地点",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "星析云平台V2.5",
+      "evidenceText": "核心产品\"星析云平台\"V2.5版本",
+      "type": "产品",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "云算智能分析平台",
+      "evidenceText": "云算智能分析平台",
+      "type": "产品",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "分布式并行计算引擎",
+      "evidenceText": "分布式并行计算引擎",
+      "type": "产品",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "技术文档系统",
+      "evidenceText": "技术文档系统",
+      "type": "产品",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "《保密协议》",
+      "evidenceText": "《保密协议》",
+      "type": "政策文件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "《竞业限制协议》",
+      "evidenceText": "《竞业限制协议》",
+      "type": "政策文件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "《技术顾问聘用合同》",
+      "evidenceText": "《技术顾问聘用合同》",
+      "type": "政策文件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "《技术鉴定报告》",
+      "evidenceText": "《技术鉴定报告》",
+      "type": "政策文件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "《中华人民共和国反不正当竞争法》",
+      "evidenceText": "《中华人民共和国反不正当竞争法》",
+      "type": "政策文件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "民事判决书",
+      "evidenceText": "民事判决书",
+      "type": "政策文件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "商业秘密",
+      "evidenceText": "商业秘密",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "秘密性",
+      "evidenceText": "秘密性",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "价值性",
+      "evidenceText": "价值性",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "保密性",
+      "evidenceText": "保密性",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "共同侵权",
+      "evidenceText": "共同侵权",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "连带责任",
+      "evidenceText": "连带责任",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "经济损失",
+      "evidenceText": "经济损失",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "合理开支",
+      "evidenceText": "合理开支",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "营业收入",
+      "evidenceText": "营业收入",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "毛利率",
+      "evidenceText": "毛利率",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "市场份额",
+      "evidenceText": "市场份额",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "研发成本",
+      "evidenceText": "研发成本",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "技术特征",
+      "evidenceText": "技术特征",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "实质性相似",
+      "evidenceText": "实质性相似",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "源代码",
+      "evidenceText": "源代码",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "算法",
+      "evidenceText": "算法",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "架构设计",
+      "evidenceText": "架构设计",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "数据处理流程",
+      "evidenceText": "数据处理流程",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "性能参数",
+      "evidenceText": "性能参数",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "数据压缩",
+      "evidenceText": "数据压缩",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "毫秒级查询响应",
+      "evidenceText": "毫秒级查询响应",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "访问权限控制",
+      "evidenceText": "访问权限控制",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "下载日志审计",
+      "evidenceText": "下载日志审计",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "竞业限制",
+      "evidenceText": "竞业限制",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "顾问费",
+      "evidenceText": "顾问费",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "核心算法模块",
+      "evidenceText": "核心算法模块",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "代码文件",
+      "evidenceText": "代码文件",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "侵权行为",
+      "evidenceText": "侵权行为",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "侵权故意",
+      "evidenceText": "侵权故意",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "案件受理费",
+      "evidenceText": "案件受理费",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "鉴定费",
+      "evidenceText": "鉴定费",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "上诉状",
+      "evidenceText": "上诉状",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "研发人员薪酬",
+      "evidenceText": "研发人员薪酬",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "服务器租赁费用",
+      "evidenceText": "服务器租赁费用",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "软件采购费用",
+      "evidenceText": "软件采购费用",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "代码变更",
+      "evidenceText": "代码变更",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "技术指导",
+      "evidenceText": "技术指导",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "技术文档",
+      "evidenceText": "技术文档",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "技术方案",
+      "evidenceText": "技术方案",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "开源社区",
+      "evidenceText": "开源社区",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "开源代码",
+      "evidenceText": "开源代码",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "核心竞争优势",
+      "evidenceText": "核心竞争优势",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "访问日志",
+      "evidenceText": "访问日志",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "下载行为",
+      "evidenceText": "下载行为",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "商业秘密构成要件",
+      "evidenceText": "商业秘密的全部构成要件",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "反不正当竞争法意义上的商业秘密",
+      "evidenceText": "反不正当竞争法意义上的商业秘密",
+      "type": "概念",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京星辰科技有限公司成立",
+      "evidenceText": "星辰公司成立于2015年8月",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京星辰科技有限公司研发DPC引擎",
+      "evidenceText": "系星辰公司投入超过2000万元研发资金、历时两年自主研发完成",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "星析云平台V2.5版本通过国家软件著作权登记",
+      "evidenceText": "核心产品\"星析云平台\"V2.5版本于2022年10月通过国家软件著作权登记",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京星辰科技有限公司与技术人员签署《保密协议》和《竞业限制协议》",
+      "evidenceText": "与包括刘建华在内的全部技术人员签署了《保密协议》和《竞业限制协议》",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华入职北京星辰科技有限公司",
+      "evidenceText": "刘建华于2018年7月入职星辰公司",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华担任北京星辰科技有限公司技术总监",
+      "evidenceText": "担任技术总监职务",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华参与DPC引擎研发",
+      "evidenceText": "是参与DPC引擎研发的核心人员之一",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华向北京星辰科技有限公司提出离职申请",
+      "evidenceText": "刘建华向星辰公司提出离职申请",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华办理完毕离职手续",
+      "evidenceText": "正式办理完毕离职手续",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "上海云帆信息技术有限公司推出云算智能分析平台",
+      "evidenceText": "云帆公司于2023年7月推出了一款名为\"云算智能分析平台\"的新产品",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京星辰科技有限公司向公安机关报案",
+      "evidenceText": "星辰公司遂向公安机关报案",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "公安机关侦查发现刘建华下载核心源代码",
+      "evidenceText": "经公安机关侦查发现：刘建华离职前于2023年6月15日至6月25日期间，利用其技术总监权限，分七次从星辰公司内部技术文档系统下载了DPC引擎的全部核心源代码",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华下载DPC引擎全部核心源代码",
+      "evidenceText": "利用其技术总监权限，分七次从星辰公司内部技术文档系统下载了DPC引擎的全部核心源代码",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华与上海云帆信息技术有限公司签署《技术顾问聘用合同》",
+      "evidenceText": "刘建华与云帆公司签署了《技术顾问聘用合同》",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "上海云帆信息技术有限公司核心算法模块代码变更",
+      "evidenceText": "云帆公司的git提交日志显示，其核心算法模块有超过80%的代码变更发生在刘建华入职云帆之后",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京星辰科技有限公司向法院提起诉讼",
+      "evidenceText": "本院于2024年3月15日立案后",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "法院公开开庭审理",
+      "evidenceText": "公开开庭进行了审理",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京国信知识产权鉴定中心出具《技术鉴定报告》",
+      "evidenceText": "北京国信知识产权鉴定中心于2024年6月出具的《技术鉴定报告》",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "法院判决刘建华、上海云帆信息技术有限公司停止侵权",
+      "evidenceText": "被告刘建华、第三人上海云帆信息技术有限公司立即停止侵权行为",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "法院判决刘建华赔偿500万元",
+      "evidenceText": "被告刘建华赔偿原告北京星辰科技有限公司经济损失及合理开支共计人民币500万元",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "法院判决上海云帆信息技术有限公司承担连带责任",
+      "evidenceText": "第三人上海云帆信息技术有限公司对第二项判决承担连带责任",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "法院驳回北京星辰科技有限公司其他诉讼请求",
+      "evidenceText": "驳回原告北京星辰科技有限公司的其他诉讼请求",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华登录DPC引擎核心代码库",
+      "evidenceText": "2023年6月15日22时17分，刘建华的账号首次登录DPC引擎核心代码库",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华下载18个核心文件",
+      "evidenceText": "6月17日凌晨1时42分，刘建华下载了engine_core.cpp、scheduler.py等18个核心文件",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华下载31个调度模块文件",
+      "evidenceText": "6月19日晚11时08分，下载了distributed_lock.py等31个调度模块文件",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华下载23个优化器文件",
+      "evidenceText": "6月21日凌晨0时56分，下载了optimizer.py等23个优化器文件",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华下载27个存储引擎文件",
+      "evidenceText": "6月22日晚10时33分，下载了storage_engine.cpp等27个存储引擎文件",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华下载15个数据压缩文件",
+      "evidenceText": "6月24日凌晨1时18分，下载了compression.py等15个数据压缩文件",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华下载13个查询处理文件",
+      "evidenceText": "6月25日凌晨2时44分，下载了query_processor.py等13个查询处理文件",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "北京星辰科技有限公司主张刘建华违反保密协议",
+      "evidenceText": "被告刘建华违反《保密协议》约定，擅自下载并向云帆公司披露星辰公司的商业秘密",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "上海云帆信息技术有限公司抗辩产品核心技术系自主研发",
+      "evidenceText": "其产品的核心技术系自主研发完成",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "name": "刘建华抗辩技术来源于公开学术论文和开源社区",
+      "evidenceText": "DPC引擎的部分技术方案来源于公开学术论文和开源社区",
+      "type": "事件",
+      "span": null,
+      "evidenceSpans": []
+    }
+  ],
+  "relations": [
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "法定代表人",
+      "tail": "张伟（星辰公司法定代表人）",
+      "subjectType": "公司",
+      "objectType": "人物",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "法定代表人：张伟，该公司总经理",
+      "evidenceSpans": []
+    },
+    {
+      "head": "李明",
+      "relation": "任职于",
+      "tail": "北京市君合律师事务所",
+      "subjectType": "人物",
+      "objectType": "组织",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "委托诉讼代理人：李明，北京市君合律师事务所律师",
+      "evidenceSpans": []
+    },
+    {
+      "head": "王芳",
+      "relation": "任职于",
+      "tail": "北京市中伦律师事务所",
+      "subjectType": "人物",
+      "objectType": "组织",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "委托诉讼代理人：王芳，北京市中伦律师事务所律师",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "任职于",
+      "tail": "北京星辰科技有限公司",
+      "subjectType": "人物",
+      "objectType": "公司",
+      "vt_from": "2018-07",
+      "vt_to": null,
+      "vt_precision_from": "month",
+      "vt_precision_to": "unknown",
+      "confidence": 0.85,
+      "evidenceText": "被告刘建华于2018年7月入职星辰公司，担任技术总监职务，是参与DPC引擎研发的核心人员之一，直接负责引擎的架构设计与性能优化工作。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "离职",
+      "tail": "北京星辰科技有限公司",
+      "subjectType": "人物",
+      "objectType": "公司",
+      "vt_from": null,
+      "vt_to": "2023-06-30",
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "day",
+      "confidence": 1.0,
+      "evidenceText": "2023年5月20日，刘建华向星辰公司提出离职申请，并于2023年6月30日正式办理完毕离职手续。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "陈晓东",
+      "relation": "担任",
+      "tail": "上海云帆信息技术有限公司",
+      "subjectType": "人物",
+      "objectType": "公司",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "法定代表人：陈晓东，该公司董事长",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "推出",
+      "tail": "云算智能分析平台",
+      "subjectType": "公司",
+      "objectType": "产品",
+      "vt_from": "2023-07",
+      "vt_to": null,
+      "vt_precision_from": "month",
+      "vt_precision_to": "unknown",
+      "confidence": 0.85,
+      "evidenceText": "云帆公司于2023年7月推出了一款名为\"云算智能分析平台\"的新产品",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "拥有",
+      "tail": "星析云平台V2.5",
+      "subjectType": "公司",
+      "objectType": "产品",
+      "vt_from": "2022-10",
+      "vt_to": null,
+      "vt_precision_from": "month",
+      "vt_precision_to": "unknown",
+      "confidence": 0.85,
+      "evidenceText": "其核心产品\"星析云平台\"V2.5版本于2022年10月通过国家软件著作权登记，登记号为2022SR1234567。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "星析云平台V2.5",
+      "relation": "包含",
+      "tail": "分布式并行计算引擎",
+      "subjectType": "产品",
+      "objectType": "产品",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "该平台的核心算法模块\"分布式并行计算引擎\"（以下简称DPC引擎）系星辰公司投入超过2000万元研发资金、历时两年自主研发完成",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "研发",
+      "tail": "分布式并行计算引擎",
+      "subjectType": "公司",
+      "objectType": "产品",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "该平台的核心算法模块\"分布式并行计算引擎\"（以下简称DPC引擎）系星辰公司投入超过2000万元研发资金、历时两年自主研发完成",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "签署",
+      "tail": "《保密协议》",
+      "subjectType": "公司",
+      "objectType": "政策文件",
+      "vt_from": "2018-07-10",
+      "vt_to": null,
+      "vt_precision_from": "day",
+      "vt_precision_to": "unknown",
+      "confidence": 1.0,
+      "evidenceText": "星辰公司与刘建华签署的《保密协议》（签署日期2018年7月10日）第3.2条明确约定",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "签署",
+      "tail": "《竞业限制协议》",
+      "subjectType": "公司",
+      "objectType": "政策文件",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "与包括刘建华在内的全部技术人员签署了《保密协议》和《竞业限制协议》",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "采取保密措施",
+      "tail": "分布式并行计算引擎",
+      "subjectType": "公司",
+      "objectType": "产品",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "星辰公司对DPC引擎采取了严格的保密措施",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "下载",
+      "tail": "开源代码",
+      "subjectType": "人物",
+      "objectType": "概念",
+      "vt_from": "2023-06-15",
+      "vt_to": "2023-06-25",
+      "vt_precision_from": "day",
+      "vt_precision_to": "day",
+      "confidence": 1.0,
+      "evidenceText": "刘建华离职前于2023年6月15日至6月25日期间，利用其技术总监权限，分七次从星辰公司内部技术文档系统下载了DPC引擎的全部核心源代码（共计127个代码文件，约4.2万行）。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "签署",
+      "tail": "《技术顾问聘用合同》",
+      "subjectType": "人物",
+      "objectType": "政策文件",
+      "vt_from": "2023-07-10",
+      "vt_to": null,
+      "vt_precision_from": "day",
+      "vt_precision_to": "unknown",
+      "confidence": 1.0,
+      "evidenceText": "2023年7月10日，刘建华与云帆公司签署了《技术顾问聘用合同》",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "签署",
+      "tail": "《技术顾问聘用合同》",
+      "subjectType": "公司",
+      "objectType": "政策文件",
+      "vt_from": "2023-07-10",
+      "vt_to": null,
+      "vt_precision_from": "day",
+      "vt_precision_to": "unknown",
+      "confidence": 1.0,
+      "evidenceText": "2023年7月10日，刘建华与云帆公司签署了《技术顾问聘用合同》",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "提供",
+      "tail": "技术指导",
+      "subjectType": "人物",
+      "objectType": "概念",
+      "vt_from": "2023-07-15",
+      "vt_to": "2025-07-14",
+      "vt_precision_from": "day",
+      "vt_precision_to": "day",
+      "confidence": 0.9,
+      "evidenceText": "合同第2.1条约定：\"顾问（刘建华）应向甲方（云帆公司）提供大数据分析平台核心算法的技术指导，包括但不限于分布式计算引擎架构设计、数据压缩算法优化、查询性能调优等。\"",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "使用",
+      "tail": "商业秘密",
+      "subjectType": "公司",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "第三人云帆公司明知或应知刘建华提供的技术来自星辰公司，仍予以使用，构成共同侵权。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京国信知识产权鉴定中心",
+      "relation": "出具",
+      "tail": "《技术鉴定报告》",
+      "subjectType": "组织",
+      "objectType": "政策文件",
+      "vt_from": "2024-06",
+      "vt_to": null,
+      "vt_precision_from": "month",
+      "vt_precision_to": "unknown",
+      "confidence": 0.85,
+      "evidenceText": "经本院委托，北京国信知识产权鉴定中心于2024年6月出具的《技术鉴定报告》（国信鉴[2024]第017号）认定",
+      "evidenceSpans": []
+    },
+    {
+      "head": "云算智能分析平台",
+      "relation": "构成实质性相似",
+      "tail": "分布式并行计算引擎",
+      "subjectType": "产品",
+      "objectType": "产品",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "云帆公司\"云算智能分析平台\"与星辰公司DPC引擎在12项核心技术特征中有11项构成实质性相似，整体相似度约为87.3%。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "赔偿",
+      "tail": "北京星辰科技有限公司",
+      "subjectType": "人物",
+      "objectType": "公司",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "二、被告刘建华赔偿原告北京星辰科技有限公司经济损失及合理开支共计人民币500万元，于本判决生效之日起三十日内支付；",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "承担",
+      "tail": "连带责任",
+      "subjectType": "公司",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "三、第三人上海云帆信息技术有限公司对第二项判决承担连带责任；",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "负担",
+      "tail": "案件受理费",
+      "subjectType": "人物",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "案件受理费46800元、鉴定费85000元，合计131800元，由被告刘建华负担92260元，第三人上海云帆信息技术有限公司负担39540元。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "负担",
+      "tail": "案件受理费",
+      "subjectType": "公司",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "案件受理费46800元、鉴定费85000元，合计131800元，由被告刘建华负担92260元，第三人上海云帆信息技术有限公司负担39540元。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "民事判决书",
+      "relation": "上诉于",
+      "tail": "北京市高级人民法院",
+      "subjectType": "政策文件",
+      "objectType": "组织",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "如不服本判决，可在判决书送达之日起十五日内向本院递交上诉状，并按对方当事人的人数提出副本，上诉于北京市高级人民法院。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "张伟（审判员）",
+      "relation": "担任",
+      "tail": "李晓梅",
+      "subjectType": "人物",
+      "objectType": "人物",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "审判员：张伟",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "成立于",
+      "tail": "2015年8月",
+      "subjectType": "公司",
+      "objectType": null,
+      "vt_from": "2015-08",
+      "vt_to": null,
+      "vt_precision_from": "month",
+      "vt_precision_to": "unknown",
+      "confidence": 0.85,
+      "evidenceText": "星辰公司成立于2015年8月，主营企业级大数据分析平台研发与销售",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "参与",
+      "tail": "分布式并行计算引擎",
+      "subjectType": "人物",
+      "objectType": "产品",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "是参与DPC引擎研发的核心人员之一，直接负责引擎的架构设计与性能优化工作。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "负责",
+      "tail": "架构设计",
+      "subjectType": "人物",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "直接负责引擎的架构设计与性能优化工作",
+      "evidenceSpans": []
+    },
+    {
+      "head": "云算智能分析平台",
+      "relation": "高度相似",
+      "tail": "分布式并行计算引擎",
+      "subjectType": "产品",
+      "objectType": "产品",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "经技术比对发现，云帆公司该产品的核心算法模块在架构设计、数据处理流程和性能参数方面均与星辰公司的DPC引擎高度相似。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "提出",
+      "tail": "刘建华向北京星辰科技有限公司提出离职申请",
+      "subjectType": "人物",
+      "objectType": "事件",
+      "vt_from": "2023-05-20",
+      "vt_to": null,
+      "vt_precision_from": "day",
+      "vt_precision_to": "unknown",
+      "confidence": 1.0,
+      "evidenceText": "2023年5月20日，刘建华向星辰公司提出离职申请",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "报案",
+      "tail": "公安机关",
+      "subjectType": "公司",
+      "objectType": "组织",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "星辰公司遂向公安机关报案",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "投入",
+      "tail": "研发成本",
+      "subjectType": "公司",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "星辰公司投入超过2000万元的研发成本",
+      "evidenceSpans": []
+    },
+    {
+      "head": "分布式并行计算引擎",
+      "relation": "构成",
+      "tail": "商业秘密",
+      "subjectType": "产品",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "第一，星辰公司的DPC引擎构成反不正当竞争法意义上的商业秘密。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "分布式并行计算引擎",
+      "relation": "具有",
+      "tail": "秘密性",
+      "subjectType": "产品",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "该技术具有秘密性（未公开）、价值性（已产生可观的商业价值）和保密性（采取了严格的保密措施），符合商业秘密的全部构成要件。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "分布式并行计算引擎",
+      "relation": "具有",
+      "tail": "价值性",
+      "subjectType": "产品",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "该技术具有秘密性（未公开）、价值性（已产生可观的商业价值）和保密性（采取了严格的保密措施），符合商业秘密的全部构成要件。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "分布式并行计算引擎",
+      "relation": "具有",
+      "tail": "保密性",
+      "subjectType": "产品",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "该技术具有秘密性（未公开）、价值性（已产生可观的商业价值）和保密性（采取了严格的保密措施），符合商业秘密的全部构成要件。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "构成",
+      "tail": "侵权行为",
+      "subjectType": "人物",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "第二，被告刘建华的行为构成侵权。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "具有",
+      "tail": "侵权故意",
+      "subjectType": "人物",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "主观上具有明显的侵权故意",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "构成",
+      "tail": "共同侵权",
+      "subjectType": "公司",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "第三，第三人云帆公司的行为构成共同侵权。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "明知",
+      "tail": "北京星辰科技有限公司",
+      "subjectType": "公司",
+      "objectType": "公司",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "足以推定云帆公司明知或应知刘建华提供的技术来源于星辰公司",
+      "evidenceSpans": []
+    },
+    {
+      "head": "民事判决书",
+      "relation": "依据",
+      "tail": "《中华人民共和国反不正当竞争法》",
+      "subjectType": "政策文件",
+      "objectType": "政策文件",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "据此，依照《中华人民共和国反不正当竞争法》第九条第一款、第十七条第一款、第二十三条第二款之规定，判决如下：",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "主张",
+      "tail": "经济损失",
+      "subjectType": "公司",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "原告星辰公司主张的500万元经济损失和合理开支，有充分的事实和法律依据",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "违反",
+      "tail": "《保密协议》",
+      "subjectType": "人物",
+      "objectType": "政策文件",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "被告刘建华违反《保密协议》约定，擅自下载并向云帆公司披露星辰公司的商业秘密",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "使用",
+      "tail": "云算智能分析平台",
+      "subjectType": "公司",
+      "objectType": "产品",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "（3）第三人云帆公司立即停止使用并销毁侵权产品\"云算智能分析平台\"中的侵权部分",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "承担",
+      "tail": "连带责任",
+      "subjectType": "人物",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "（4）被告刘建华与第三人云帆公司承担连带责任。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "位于",
+      "tail": "北京市海淀区中关村科技园8号楼",
+      "subjectType": "公司",
+      "objectType": "地点",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "原告：北京星辰科技有限公司，住所地北京市海淀区中关村科技园8号楼",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "位于",
+      "tail": "上海市浦东新区张江高科技园区3号楼",
+      "subjectType": "公司",
+      "objectType": "地点",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "第三人：上海云帆信息技术有限公司，住所地上海市浦东新区张江高科技园区3号楼",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "居住于",
+      "tail": "北京市朝阳区望京新城12号楼3单元501室",
+      "subjectType": "人物",
+      "objectType": "地点",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "住北京市朝阳区望京新城12号楼3单元501室",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "出生于",
+      "tail": "1975-03-15",
+      "subjectType": "人物",
+      "objectType": null,
+      "vt_from": "1975-03-15",
+      "vt_to": null,
+      "vt_precision_from": "day",
+      "vt_precision_to": "unknown",
+      "confidence": 1.0,
+      "evidenceText": "刘建华，男，1975年3月15日出生",
+      "evidenceSpans": []
+    },
+    {
+      "head": "李明",
+      "relation": "担任",
+      "tail": "北京星辰科技有限公司",
+      "subjectType": "人物",
+      "objectType": "公司",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "原告星辰公司的委托诉讼代理人李明",
+      "evidenceSpans": []
+    },
+    {
+      "head": "王芳",
+      "relation": "担任",
+      "tail": "刘建华",
+      "subjectType": "人物",
+      "objectType": "人物",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "被告刘建华的委托诉讼代理人王芳",
+      "evidenceSpans": []
+    },
+    {
+      "head": "陈晓东",
+      "relation": "参与",
+      "tail": "法院驳回北京星辰科技有限公司其他诉讼请求",
+      "subjectType": "人物",
+      "objectType": "事件",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "第三人云帆公司的法定代表人陈晓东均到庭参加诉讼",
+      "evidenceSpans": []
+    },
+    {
+      "head": "分布式并行计算引擎",
+      "relation": "部分技术方案来源于",
+      "tail": "开源社区",
+      "subjectType": "产品",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.85,
+      "evidenceText": "DPC引擎的部分技术方案来源于公开学术论文和开源社区，不构成商业秘密",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "未签署",
+      "tail": "《竞业限制协议》",
+      "subjectType": "人物",
+      "objectType": "政策文件",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.85,
+      "evidenceText": "其在星辰公司任职期间未签署有效的竞业限制协议",
+      "evidenceSpans": []
+    },
+    {
+      "head": "云算智能分析平台",
+      "relation": "不存在实质性相似",
+      "tail": "分布式并行计算引擎",
+      "subjectType": "产品",
+      "objectType": "产品",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.85,
+      "evidenceText": "其产品的核心技术系自主研发完成，与星辰公司的DPC引擎不存在实质性相似",
+      "evidenceSpans": []
+    },
+    {
+      "head": "分布式并行计算引擎",
+      "relation": "并非复制",
+      "tail": "开源代码",
+      "subjectType": "产品",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "DPC引擎的核心技术方案并非简单复制开源代码。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "不得披露",
+      "tail": "商业秘密",
+      "subjectType": "人物",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "乙方（刘建华）不得在未经甲方书面同意的情况下向任何第三方披露、转让或许可使用。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "刘建华",
+      "relation": "登录",
+      "tail": "分布式并行计算引擎",
+      "subjectType": "人物",
+      "objectType": "产品",
+      "vt_from": "2023-06-15",
+      "vt_to": null,
+      "vt_precision_from": "day",
+      "vt_precision_to": "unknown",
+      "confidence": 1.0,
+      "evidenceText": "2023年6月15日22时17分，刘建华的账号首次登录DPC引擎核心代码库",
+      "evidenceSpans": []
+    },
+    {
+      "head": "下载行为",
+      "relation": "发生于",
+      "tail": "深夜时段",
+      "subjectType": "概念",
+      "objectType": null,
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "七次下载行为均发生在深夜时段，且单次下载文件数量明显超过正常工作所需。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "上海云帆信息技术有限公司",
+      "relation": "要求",
+      "tail": "技术文档",
+      "subjectType": "公司",
+      "objectType": "概念",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.9,
+      "evidenceText": "合同第4.2条约定云帆公司有权\"要求顾问提供其本人掌握的技术文档和技术方案\"。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "分布式并行计算引擎",
+      "relation": "实现",
+      "tail": "营业收入",
+      "subjectType": "产品",
+      "objectType": "概念",
+      "vt_from": "2022",
+      "vt_to": "2022",
+      "vt_precision_from": "year",
+      "vt_precision_to": "year",
+      "confidence": 0.85,
+      "evidenceText": "星辰公司2022年度财务报告显示，DPC引擎相关产品当年实现营业收入8470万元，毛利率为62.3%。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "市场份额下降",
+      "tail": "24.8%",
+      "subjectType": "公司",
+      "objectType": null,
+      "vt_from": "2023-07",
+      "vt_to": null,
+      "vt_precision_from": "month",
+      "vt_precision_to": "unknown",
+      "confidence": 0.65,
+      "evidenceText": "星辰公司相关产品的市场份额从37.2%下降至24.8%",
+      "evidenceSpans": []
+    },
+    {
+      "head": "北京星辰科技有限公司",
+      "relation": "驳回",
+      "tail": "法院驳回北京星辰科技有限公司其他诉讼请求",
+      "subjectType": "公司",
+      "objectType": "事件",
+      "vt_from": null,
+      "vt_to": null,
+      "vt_precision_from": "unknown",
+      "vt_precision_to": "unknown",
+      "confidence": 0.95,
+      "evidenceText": "四、驳回原告北京星辰科技有限公司的其他诉讼请求。",
+      "evidenceSpans": []
+    },
+    {
+      "head": "民事判决书",
+      "relation": "作出",
+      "tail": "2024-09-25",
+      "subjectType": "政策文件",
+      "objectType": null,
+      "vt_from": "2024-09-25",
+      "vt_to": null,
+      "vt_precision_from": "day",
+      "vt_precision_to": "unknown",
+      "confidence": 1.0,
+      "evidenceText": "二〇二四年九月二十五日",
+      "evidenceSpans": []
+    }
+  ],
+  "timeAnchors": [
+    {
+      "evidenceText": "2024年3月15日",
+      "type": "DATE",
+      "normISO": "2024-03-15",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2015年8月",
+      "type": "DATE",
+      "normISO": "2015-08",
+      "precision": "month",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2022年10月",
+      "type": "DATE",
+      "normISO": "2022-10",
+      "precision": "month",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年5月20日",
+      "type": "DATE",
+      "normISO": "2023-05-20",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年6月30日",
+      "type": "DATE",
+      "normISO": "2023-06-30",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年8月",
+      "type": "DATE",
+      "normISO": "2023-08",
+      "precision": "month",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年7月",
+      "type": "DATE",
+      "normISO": "2023-07",
+      "precision": "month",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年6月15日至6月25日",
+      "type": "DATERANGE",
+      "normISO": "2023-06-15/2023-06-25",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年7月10日",
+      "type": "DATE",
+      "normISO": "2023-07-10",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年7月15日至2025年7月14日",
+      "type": "DATERANGE",
+      "normISO": "2023-07-15/2025-07-14",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2021年9月至2022年6月",
+      "type": "DATERANGE",
+      "normISO": "2021-09/2022-06",
+      "precision": "month",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2018年7月10日",
+      "type": "DATE",
+      "normISO": "2018-07-10",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年6月15日22时17分",
+      "type": "DATE",
+      "normISO": "2023-06-15T22:17",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "6月17日凌晨1时42分",
+      "type": "DATE",
+      "normISO": "2023-06-17T01:42",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "6月19日晚11时08分",
+      "type": "DATE",
+      "normISO": "2023-06-19T23:08",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "6月21日凌晨0时56分",
+      "type": "DATE",
+      "normISO": "2023-06-21T00:56",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "6月22日晚10时33分",
+      "type": "DATE",
+      "normISO": "2023-06-22T22:33",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "6月24日凌晨1时18分",
+      "type": "DATE",
+      "normISO": "2023-06-24T01:18",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "6月25日凌晨2时44分",
+      "type": "DATE",
+      "normISO": "2023-06-25T02:44",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年7月15日至8月20日",
+      "type": "DATERANGE",
+      "normISO": "2023-07-15/2023-08-20",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2024年6月",
+      "type": "DATE",
+      "normISO": "2024-06",
+      "precision": "month",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2022年度",
+      "type": "DATE",
+      "normISO": "2022",
+      "precision": "year",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2023年下半年",
+      "type": "DATERANGE",
+      "normISO": "2023-07/2023-12",
+      "precision": "month",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "二〇二四年九月二十五日",
+      "type": "DATE",
+      "normISO": "2024-09-25",
+      "precision": "day",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "本判决生效之日起三十日内",
+      "type": "RELATIVE",
+      "normISO": null,
+      "precision": "unknown",
+      "relativeAnchor": "本判决生效之日",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "判决书送达之日起十五日内",
+      "type": "RELATIVE",
+      "normISO": null,
+      "precision": "unknown",
+      "relativeAnchor": "判决书送达之日",
+      "span": null,
+      "evidenceSpans": []
+    },
+    {
+      "evidenceText": "2018年7月",
+      "type": "DATE",
+      "normISO": "2018-07",
+      "precision": "month",
+      "relativeAnchor": null,
+      "span": null,
+      "evidenceSpans": []
+    }
+  ],
+  "coreferenceChains": [
+    {
+      "canonicalName": "北京星辰科技有限公司",
+      "aliases": [
+        "星辰公司",
+        "原告"
+      ]
+    },
+    {
+      "canonicalName": "上海云帆信息技术有限公司",
+      "aliases": [
+        "该公司",
+        "甲方",
+        "云帆公司",
+        "第三人"
+      ]
+    },
+    {
+      "canonicalName": "刘建华",
+      "aliases": [
+        "被告",
+        "技术总监",
+        "顾问",
+        "乙方"
+      ]
+    },
+    {
+      "canonicalName": "李明",
+      "aliases": [
+        "委托诉讼代理人",
+        "李明律师"
+      ]
+    },
+    {
+      "canonicalName": "王芳",
+      "aliases": [
+        "王芳律师"
+      ]
+    },
+    {
+      "canonicalName": "张伟（星辰公司法定代表人）",
+      "aliases": [
+        "法定代表人",
+        "总经理"
+      ]
+    },
+    {
+      "canonicalName": "陈晓东",
+      "aliases": [
+        "董事长"
+      ]
+    },
+    {
+      "canonicalName": "李晓梅",
+      "aliases": [
+        "审判员"
+      ]
+    },
+    {
+      "canonicalName": "王建国",
+      "aliases": [
+        "审判长"
+      ]
+    },
+    {
+      "canonicalName": "陈静",
+      "aliases": [
+        "书记员"
+      ]
+    },
+    {
+      "canonicalName": "分布式并行计算引擎",
+      "aliases": [
+        "DPC引擎"
+      ]
+    },
+    {
+      "canonicalName": "星析云平台V2.5",
+      "aliases": [
+        "星析云平台",
+        "该平台"
+      ]
+    },
+    {
+      "canonicalName": "云算智能分析平台",
+      "aliases": [
+        "该产品",
+        "侵权产品"
+      ]
+    },
+    {
+      "canonicalName": "北京国信知识产权鉴定中心",
+      "aliases": [
+        "鉴定中心"
+      ]
+    }
+  ],
+  "causalEdges": [],
+  "qualityReport": [
+    {
+      "level": "INFO",
+      "code": "PIPELINE_TWO_STAGE",
+      "message": "[Semantica 式两阶段] 阶段1 节点抽取: 实体×112、时间锚点×27、指代链别名×25"
+    },
+    {
+      "level": "WARNING",
+      "code": "REL_SELF_LOOP_DROPPED",
+      "message": "自环关系已丢弃: 王建国 -[担任]-> 王建国"
+    },
+    {
+      "level": "WARNING",
+      "code": "REL_SELF_LOOP_DROPPED",
+      "message": "自环关系已丢弃: 李晓梅 -[担任]-> 李晓梅"
+    },
+    {
+      "level": "WARNING",
+      "code": "REL_SELF_LOOP_DROPPED",
+      "message": "自环关系已丢弃: 陈静 -[担任]-> 陈静"
+    },
+    {
+      "level": "WARNING",
+      "code": "REL_NAME_SUBSTRING_MATCHED",
+      "message": "关系引用 '离职申请' 名称包含匹配到 canonical='刘建华向北京星辰科技有限公司提出离职申请' (type=事件)"
+    },
+    {
+      "level": "WARNING",
+      "code": "REL_TRIPLE_DEDUP_SKIPPED",
+      "message": "重复三元组 上海云帆信息技术有限公司-[承担]->连带责任 (本项conf=0.95) 丢弃"
+    },
+    {
+      "level": "WARNING",
+      "code": "REL_NAME_SUBSTRING_MATCHED",
+      "message": "关系引用 '诉讼' 名称包含匹配到 canonical='法院驳回北京星辰科技有限公司其他诉讼请求' (type=事件)"
+    },
+    {
+      "level": "WARNING",
+      "code": "REL_NAME_SUBSTRING_MATCHED",
+      "message": "关系引用 '分布式并行计算引擎核心代码库' 名称包含匹配到 canonical='分布式并行计算引擎' (type=产品)"
+    },
+    {
+      "level": "WARNING",
+      "code": "REL_NAME_SUBSTRING_MATCHED",
+      "message": "关系引用 '其他诉讼请求' 名称包含匹配到 canonical='法院驳回北京星辰科技有限公司其他诉讼请求' (type=事件)"
+    },
+    {
+      "level": "WARNING",
+      "code": "W3_ENTITY_NEAR_DUP",
+      "message": "近邻合并 (sim=0.86)：关系中 '源代码'→'开源代码'（同类型 概念）；宽松策略：实体节点仍不删除"
+    }
+  ],
+  "qualityStats": {
+    "PIPELINE_TWO_STAGE": 1,
+    "REL_SELF_LOOP_DROPPED": 3,
+    "REL_NAME_SUBSTRING_MATCHED": 4,
+    "REL_TRIPLE_DEDUP_SKIPPED": 1,
+    "relations_extracted": 65,
+    "W3_ENTITY_NEAR_DUP": 1
+  },
+  "tokenConsumed": 47445,
+  "duration": 123263,
+  "writeCount": {
+    "entities": 112,
+    "timeAnchors": 27,
+    "relations": 65,
+    "causalEdges": 0,
+    "missing_nodes_created": 5
+  }
+}

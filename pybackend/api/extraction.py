@@ -58,6 +58,8 @@ def _pick_llm_client(request: Request, llm_model_id: Optional[int]) -> LLMClient
             return LLMClient({
                 "model": {
                     "model_name": row["model_name"],
+                    "provider": row.get("provider"),
+                    "context_window": row.get("context_window"),
                     "api_key": row["api_key"],
                     "base_url": row["base_url"],
                     "timeout_sec": 300.0,
@@ -94,16 +96,16 @@ def _to_api_payload(
     payload: LlmExtractionPayload, rep: QualityReport
 ) -> Dict[str, Any]:
     def _span_dict(s):
-        return {"start": s.start, "end": s.end}
+        return {"start": s.start, "end": s.end} if s else None
 
     def _ent(e: ExtractedEntity) -> Dict[str, Any]:
-        return {"name": e.canonicalName, "mention": e.mention, "type": e.type,
-                "span": _span_dict(e.span)}
+        return {"name": e.canonicalName, "evidenceText": e.evidenceText,
+                "type": e.type, "span": None, "evidenceSpans": []}
 
     def _anc(a: TimeAnchor) -> Dict[str, Any]:
-        return {"expr": a.expr, "type": a.type, "normISO": a.normISO,
+        return {"evidenceText": a.evidenceText, "type": a.type, "normISO": a.normISO,
                 "precision": a.precision, "relativeAnchor": a.relativeAnchor,
-                "span": _span_dict(a.span)}
+                "span": None, "evidenceSpans": []}
 
     def _rel(r: ExtractedRelation) -> Dict[str, Any]:
         return {"head": r.subject, "relation": r.predicate, "tail": r.object,
@@ -112,14 +114,26 @@ def _to_api_payload(
                 "vt_precision_from": r.vt_precision_from,
                 "vt_precision_to": r.vt_precision_to,
                 "confidence": r.confidence,
+                "evidenceText": r.evidenceText,
                 "evidenceSpans": [_span_dict(s) for s in r.evidenceSpans]}
 
     def _iss(i) -> Dict[str, Any]:
         return {"level": i.level, "code": i.code, "message": i.message}
 
+    # 从 alias_map 还原 coreferenceChains（别名 → 规范名 分组）
+    from collections import defaultdict
+    grouped: Dict[str, List[str]] = defaultdict(list)
+    for alias, canonical in (payload.aliasMap or {}).items():
+        grouped[canonical].append(alias)
+    coreference_chains = [
+        {"canonicalName": c, "aliases": aliases}
+        for c, aliases in grouped.items()
+    ]
+
     return {
         "entities": [_ent(e) for e in payload.entities],
         "timeAnchors": [_anc(a) for a in payload.timeAnchors],
+        "coreferenceChains": coreference_chains,
         "relations": [_rel(r) for r in payload.relations],
         "causalEdges": [],
         "qualityReport": [_iss(i) for i in rep.issues],
@@ -171,6 +185,7 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
         timeAnchors=stage1.time_anchors,
         relations=relations,
         causalEdges=[],
+        aliasMap=stage1.alias_map,
     )
     payload, rep2 = run_quality_pipeline(payload, text)
     for i in rep2.issues:
@@ -191,6 +206,7 @@ def extract(req: ExtractionRequest, request: Request) -> ExtractionResult:
         entities=api_dict["entities"],
         relations=api_dict["relations"],
         timeAnchors=api_dict["timeAnchors"],
+        coreferenceChains=api_dict["coreferenceChains"],
         causalEdges=api_dict["causalEdges"],
         qualityReport=api_dict["qualityReport"],
         qualityStats=api_dict["qualityStats"],
@@ -252,12 +268,12 @@ def extract_entities_api(req: EntityExtractRequest, request: Request) -> Dict[st
 
     def _ent(e: ExtractedEntity):
         return {"name": e.canonicalName, "mention": e.mention, "type": e.type,
-                "span": {"start": e.span.start, "end": e.span.end}}
+                "span": {"start": e.span.start, "end": e.span.end} if e.span else None}
 
     def _anc(a: TimeAnchor):
         return {"expr": a.expr, "type": a.type, "normISO": a.normISO,
                 "precision": a.precision, "relativeAnchor": a.relativeAnchor,
-                "span": {"start": a.span.start, "end": a.span.end}}
+                "span": {"start": a.span.start, "end": a.span.end} if a.span else None}
 
     return {
         "entities": [_ent(e) for e in stage1.entities],
@@ -273,7 +289,7 @@ def extract_entities_api(req: EntityExtractRequest, request: Request) -> Dict[st
 
 @router.post("/api/extract/relations")
 def extract_relations_api(req: RelationExtractRequest, request: Request) -> Dict[str, Any]:
-    """阶段2：注入阶段1产物抽关系（实体表硬约束），含 W1-W5 质量管道，纯计算不写库。"""
+    """阶段2：注入阶段1产物抽关系（实体表硬约束），纯计算不写库、不带质量管道。"""
     llm_client = _pick_llm_client(request, req.llmModelId)
     text = (req.text or "").strip()
     if not text:
@@ -282,40 +298,36 @@ def extract_relations_api(req: RelationExtractRequest, request: Request) -> Dict
         raise HTTPException(status_code=400, detail="entityStage 为空，请先调用 /api/extract/entities")
 
     t0 = time.time()
-    rep = QualityReport()
     stage1 = _rebuild_stage1(req.entityStage)
     if not stage1.entities:
         raise HTTPException(status_code=400, detail="entityStage.entities 解析失败")
 
     try:
         relations, tok2 = extract_relations(
-            llm_client, text, stage1, ontology=req.ontology or None, rep=rep,
+            llm_client, text, stage1, ontology=req.ontology or None,
         )
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     _log_call(req.userId, llm_client, tok2, int((time.time() - t0) * 1000))
 
-    # 质量管道 W1-W5（与主链路同规格：覆盖实体 span 修正 + 关系校验）
+    # 纯抽取结果：不跑 W1-W5 质量管道（主链路 /api/extract 才跑，这里保留方法原生输出）
     payload = LlmExtractionPayload(
         docTime=stage1.doc_time,
         entities=stage1.entities,
         timeAnchors=stage1.time_anchors,
         relations=relations,
         causalEdges=[],
+        aliasMap=stage1.alias_map,
     )
-    payload, rep2 = run_quality_pipeline(payload, text)
-    for i in rep2.issues:
-        rep.add(i.level, i.code, i.message)
-
-    api_dict = _to_api_payload(payload, rep)
+    api_dict = _to_api_payload(payload, QualityReport())
     return {
-        "entities": api_dict["entities"],       # W1/W3 可能修正实体，一并返回
+        "entities": api_dict["entities"],
         "relations": api_dict["relations"],
         "timeAnchors": api_dict["timeAnchors"],
         "causalEdges": [],
-        "qualityReport": api_dict["qualityReport"],
-        "qualityStats": api_dict["qualityStats"],
+        "qualityReport": [],
+        "qualityStats": {},
         "tokenConsumed": tok2,
         "duration": int((time.time() - t0) * 1000),
-        "writeCount": {},                       # 纯计算：不写 Neo4j
+        "writeCount": {},
     }

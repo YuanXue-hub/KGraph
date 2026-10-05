@@ -696,6 +696,124 @@ def get_entity_neighborhood(
     return "\n".join(lines)
 
 
+@tool
+def query_temporal(
+    model_id: int,
+    as_of: str = "",
+    from_time: str = "",
+    to_time: str = "",
+    entity: str = "",
+    limit: int = 30,
+) -> str:
+    """时态图谱查询：按时间维度过滤关系边，支持时间点快照和时间范围查询。
+
+    参数说明：
+      - model_id:  图谱模型 ID
+      - as_of:     时间点查询（如 "2023"、"2023-06"、"2023-06-15"），
+                   返回该时刻仍有效的关系；与 from_time/to_time 互斥
+      - from_time: 时间范围起点（如 "2020"），返回从该时间起有效的关系
+      - to_time:   时间范围终点（如 "2025"），返回到该时间前有效的关系
+      - entity:    可选，限定查询某个实体的时态关系；不填则查全局
+      - limit:     返回条数上限，默认 30
+
+    时态字段说明：
+      - vt_from / vt_to 为空字符串 = 永久有效（无时态标注）
+      - vt_precision 精度：day / month / year / unknown
+      - 比较时按字符串前缀匹配，保证 "2023" 能覆盖 "2023-06-15"
+
+    典型用法：
+      · "2023 年时 Python 和 Java 的关系是什么？" → as_of="2023", entity="Python"
+      · "2020 到 2025 年间有哪些关系？" → from_time="2020", to_time="2025"
+      · "这个实体在 2024 年发生了什么？" → entity="某实体", as_of="2024"
+    """
+    # 规范化参数
+    as_of = (as_of or "").strip()
+    from_time = (from_time or "").strip()
+    to_time = (to_time or "").strip()
+    entity = (entity or "").strip()
+
+    if not as_of and not from_time and not to_time:
+        return "请指定 as_of（时间点）或 from_time/to_time（时间范围）参数。"
+
+    # 构建时间过滤条件
+    # 空字符串的 vt_from/vt_to 视为永久有效，不被过滤
+    time_conds = []
+    if as_of:
+        # 时间点：vt_from <= as_of 且 (vt_to >= as_of 或 vt_to 为空)
+        time_conds.append(
+            "(r.vt_from = '' OR r.vt_from <= $as_of) AND "
+            "(r.vt_to = '' OR r.vt_to >= $as_of)"
+        )
+    if from_time:
+        time_conds.append("(r.vt_to = '' OR r.vt_to >= $from_time)")
+    if to_time:
+        time_conds.append("(r.vt_from = '' OR r.vt_from <= $to_time)")
+
+    where_time = " AND " + " AND ".join(time_conds) if time_conds else ""
+
+    # 实体过滤
+    entity_where = ""
+    if entity:
+        entity_where = " AND (s.canonicalName = $entity OR s.name = $entity OR o.canonicalName = $entity OR o.name = $entity)"
+
+    cypher = f"""
+        MATCH (s:Entity {{modelId: $modelId}})-[r:RELATION]->(o:Entity {{modelId: $modelId}})
+        WHERE type(r) = 'RELATION'{where_time}{entity_where}
+        RETURN s.canonicalName AS head,
+               coalesce(r.predicate, r.type) AS relation,
+               o.canonicalName AS tail,
+               r.vt_from AS vt_from,
+               r.vt_to AS vt_to,
+               r.vt_precision_from AS vpf,
+               r.vt_precision_to AS vpt,
+               r.confidence AS conf,
+               r.evidenceText AS evidence
+        ORDER BY r.vt_from
+        LIMIT $limit
+    """
+
+    params = {"modelId": model_id, "limit": limit}
+    if as_of:
+        params["as_of"] = as_of
+    if from_time:
+        params["from_time"] = from_time
+    if to_time:
+        params["to_time"] = to_time
+    if entity:
+        params["entity"] = entity
+
+    records = _query(cypher, **params)
+
+    if not records:
+        scope = f"实体「{entity}」" if entity else "当前图谱"
+        time_desc = as_of if as_of else f"{from_time} ~ {to_time}"
+        return f"{scope}在 {time_desc} 期间没有符合的关系。"
+
+    # 构建查询描述
+    if as_of:
+        time_desc = f"截至 {as_of}"
+    elif from_time and to_time:
+        time_desc = f"{from_time} ~ {to_time}"
+    elif from_time:
+        time_desc = f"{from_time} 起"
+    else:
+        time_desc = f"截至 {to_time}"
+
+    lines = [f"时态查询（{time_desc}，共 {len(records)} 条）:"]
+    for r in records:
+        vt = r.get("vt_from") or ""
+        vt_to = r.get("vt_to") or ""
+        if vt or vt_to:
+            vt_str = f" [{vt} ~ {vt_to or '至今'}]"
+        else:
+            vt_str = " [永久]"
+        conf = r.get("conf", 0)
+        lines.append(
+            f"  - {r['head']} --[{r['relation']}]--> {r['tail']}{vt_str} (conf={conf})"
+        )
+    return "\n".join(lines)
+
+
 # 全部工具列表
 ALL_TOOLS = [
     search_entities,
@@ -707,4 +825,5 @@ ALL_TOOLS = [
     get_entities_by_type,
     get_causal_chain,
     get_entity_neighborhood,
+    query_temporal,
 ]

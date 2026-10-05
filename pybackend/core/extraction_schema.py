@@ -6,7 +6,7 @@ Semantica「LLM 只负责抽取、Quality Layer 做确定性治理」的分层�
 """
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, validator
 
@@ -47,24 +47,26 @@ class EvidenceSpan(BaseModel):
 # 1. 实体（归一化 + 本体对齐 + 证据）
 # ============================================================================
 class ExtractedEntity(BaseModel):
-    mention: str = Field(..., min_length=1, description="原文中出现的字面片段，如 '字节'")
+    evidenceText: str = Field(..., min_length=1, description="原文中出现的字面片段，如 '字节'（原 mention 字段，统一命名为 evidenceText）")
     canonicalName: str = Field(
         ...,
         min_length=1,
-        description="归一化后的标准名称，如 '字节跳动'；应与 mention 是同一实体，严禁跨实体编造",
+        description="归一化后的标准名称，如 '字节跳动'；应与 evidenceText 是同一实体，严禁跨实体编造",
     )
     type: str = Field(..., min_length=1, description="实体类型；优先匹配本体，缺失时自由推断")
     kosCategory: Optional[str] = Field(
         None, description="可选：KOS 三层路径，如 '信息技术/互联网公司/平台企业'"
     )
-    span: EvidenceSpan = Field(..., description="mention 所对应的原文字符级 span")
+    evidenceSpans: List[EvidenceSpan] = Field(
+        default_factory=list, description="原文证据坐标（已弃用 find 定位，恒为空列表；evidenceText 即原文证据片段）"
+    )
 
 
 # ============================================================================
 # 2. 时间锚点（单独抽，避免和关系捆绑时 LLM 漏抽 / 编造时间）
 # ============================================================================
 class TimeAnchor(BaseModel):
-    expr: str = Field(..., min_length=1, description="原文中出现的时间表达式，逐字来自原文")
+    evidenceText: str = Field(..., min_length=1, description="原文中出现的时间表达式，逐字来自原文（原 expr 字段，统一命名为 evidenceText）")
     type: ANCHOR_TYPE = "UNKNOWN"
     normISO: Optional[str] = Field(
         None,
@@ -79,7 +81,9 @@ class TimeAnchor(BaseModel):
         None,
         description="RELATIVE 类型时说明依赖的锚点，如 'doc_time / 事件A开始'；其它类型留空",
     )
-    span: EvidenceSpan
+    evidenceSpans: List[EvidenceSpan] = Field(
+        default_factory=list, description="原文证据坐标（已弃用 find 定位，恒为空列表；evidenceText 即原文证据片段）"
+    )
 
 
 # ============================================================================
@@ -103,8 +107,11 @@ class ExtractedRelation(BaseModel):
     vt_precision_from: PRECISION = "unknown"
     vt_precision_to: PRECISION = "unknown"
     confidence: float = Field(..., ge=0.0, le=1.0, description="断言置信度，LLM 自估")
+    evidenceText: str = Field(
+        "", description="原文证据片段（LLM 直接输出，必须是原文子串，禁止改写/总结）。评估 evidenceValidity 直接使用此字段。"
+    )
     evidenceSpans: List[EvidenceSpan] = Field(
-        ..., min_length=1, description="至少 1 处原文证据 span。没有证据的断言 LLM 应直接不输出。"
+        default_factory=list, description="原文证据坐标（前端高亮用，可空）。"
     )
 
 
@@ -134,8 +141,11 @@ class CausalEdge(BaseModel):
         None,
         description="能从时间锚点证明 cause.VT≤effect.VT 时标 CAUSE_BEFORE_EFFECT，其余 SAME_TIME/UNKNOWN",
     )
+    evidenceText: str = Field(
+        "", description="原文证据片段（LLM 直接输出，必须是原文子串，包含 signalWord 所在片段）。"
+    )
     evidenceSpans: List[EvidenceSpan] = Field(
-        ..., min_length=1, description="至少 1 处原文证据 span，且必须包含 signalWord 所在片段"
+        default_factory=list, description="原文证据坐标（前端高亮用，可空）。"
     )
 
 
@@ -151,3 +161,7 @@ class LlmExtractionPayload(BaseModel):
     timeAnchors: List[TimeAnchor] = Field(default_factory=list)
     relations: List[ExtractedRelation] = Field(default_factory=list)
     causalEdges: List[CausalEdge] = Field(default_factory=list)
+    aliasMap: Dict[str, str] = Field(
+        default_factory=dict,
+        description="指代消解别名映射：别名/指代词 → 规范实体名（阶段1 coreferenceChains 产物，用于关系引用解析）"
+    )

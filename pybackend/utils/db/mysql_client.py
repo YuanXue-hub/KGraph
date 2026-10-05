@@ -101,7 +101,7 @@ class MysqlClient:
         self._ensure_connection()
         sql = (
             "SELECT id, provider, model_name, display_name, base_url, api_key, "
-            "is_reasoner, temperature, enabled, sort_order, userId FROM llm_model "
+            "is_reasoner, temperature, enabled, sort_order, userId, context_window FROM llm_model "
             "WHERE isDeleted = 0"
         )
         if enabled_only:
@@ -117,7 +117,7 @@ class MysqlClient:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 "SELECT id, provider, model_name, display_name, base_url, api_key, "
-                "is_reasoner, temperature, enabled, userId FROM llm_model "
+                "is_reasoner, temperature, enabled, userId, context_window FROM llm_model "
                 "WHERE id = %s AND isDeleted = 0",
                 (model_id,),
             )
@@ -128,7 +128,7 @@ class MysqlClient:
         self._ensure_connection()
         sql = (
             "SELECT id, provider, model_name, display_name, base_url, api_key, "
-            "is_reasoner, temperature, enabled, sort_order, userId FROM llm_model "
+            "is_reasoner, temperature, enabled, sort_order, userId, context_window FROM llm_model "
             "WHERE isDeleted = 0 AND userId = %s"
         )
         if enabled_only:
@@ -144,8 +144,8 @@ class MysqlClient:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 "INSERT INTO llm_model (provider, model_name, display_name, base_url, api_key, "
-                "is_reasoner, temperature, enabled, sort_order, userId) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                "is_reasoner, temperature, enabled, sort_order, userId, context_window) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     data["provider"], data["model_name"], data["display_name"],
                     data["base_url"], data["api_key"],
@@ -154,6 +154,7 @@ class MysqlClient:
                     1 if data.get("enabled", 1) else 0,
                     int(data.get("sort_order") or 0),
                     data.get("user_id"),
+                    data.get("context_window"),
                 ),
             )
             return int(cursor.lastrowid)
@@ -176,6 +177,9 @@ class MysqlClient:
         if data.get("enabled") is not None:
             sets.append("enabled = %s")
             params.append(1 if data["enabled"] else 0)
+        if data.get("context_window") is not None:
+            sets.append("context_window = %s")
+            params.append(data["context_window"])
         if not sets:
             return 0
         params.extend([model_id, user_id])
