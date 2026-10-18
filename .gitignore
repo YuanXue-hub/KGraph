@@ -37,6 +37,11 @@ application-local.yml
 pybackend/config.json
 pybackend/prompt.json
 
+### Docker 部署配置（含敏感信息，不提交实际配置，仅提交 example 模板） ###
+.env
+docker/config/config.json
+docker/config/application-local.yml
+
 ### Python 构建产物 ###
 __pycache__/
 *.py[cod]

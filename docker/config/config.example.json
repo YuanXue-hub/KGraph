@@ -1,0 +1,27 @@
+{
+  "model": {
+    "model_name": "deepseek-chat",
+    "api_key": "your-api-key-here",
+    "base_url": "https://api.deepseek.com/v1"
+  },
+  "neo4j": {
+    "username": "neo4j",
+    "password": "your-password-here",
+    "url": "bolt://localhost:7687"
+  },
+  "memory": {
+    "mysql": {
+      "host": "localhost",
+      "port": 3306,
+      "user": "root",
+      "password": "your-mysql-password",
+      "database": "seedboot"
+    },
+    "redis": {
+      "host": "localhost",
+      "port": 6379,
+      "db": 0,
+      "max_messages": 50
+    }
+  }
+}

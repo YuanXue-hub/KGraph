@@ -1,0 +1,63 @@
+spring:
+  datasource:
+    # serverTimezone 必须与 MySQL 服务器实际时区一致（SELECT @@system_time_zone 查看），否则时间会整体偏移
+    url: jdbc:mysql://localhost:3306/seedboot?useSSL=false&serverTimezone=UTC&characterEncoding=utf-8
+    username: root
+    password: your-mysql-password
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: your-neo4j-password
+  ai:
+    openai:
+      base-url: https://api.deepseek.com
+      api-key: your-api-key-here
+      chat:
+        options:
+          model: deepseek-chat
+          temperature: 0.7
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: never
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: false
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      table-underline: false
+      logic-delete-field: isDelete
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+# Python微服务配置
+python:
+  service:
+    url: http://localhost:8001
+
+# MinIO 对象存储配置
+minio:
+  endpoint: http://localhost:9000
+  access-key: your-access-key
+  secret-key: your-secret-key
+  bucket: kgraph
+
+# MinerU 文档解析服务配置（PDF/Word → Markdown）
+# 启动方式：mineru-api --port 8000
+mineru:
+  base-url: http://localhost:8000
+
+server:
+  port: 8888
+  servlet:
+    context-path: /api

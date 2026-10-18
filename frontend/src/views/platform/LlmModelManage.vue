@@ -241,7 +241,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, type ComponentPublicInstance } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Cpu, DataLine } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
@@ -264,10 +264,10 @@ const modelTokensEls = new Map<string, HTMLElement>()
 const modelCallsCharts = new Map<string, echarts.ECharts>()
 const modelTokensCharts = new Map<string, echarts.ECharts>()
 
-function setModelCallsRef(name: string, el: Element | null) {
+function setModelCallsRef(name: string, el: Element | ComponentPublicInstance | null) {
   if (el) modelCallsEls.set(name, el as HTMLElement)
 }
-function setModelTokensRef(name: string, el: Element | null) {
+function setModelTokensRef(name: string, el: Element | ComponentPublicInstance | null) {
   if (el) modelTokensEls.set(name, el as HTMLElement)
 }
 

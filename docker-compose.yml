@@ -1,0 +1,49 @@
+name: kgraph
+
+services:
+  pybackend:
+    build:
+      context: ./pybackend
+      dockerfile: Dockerfile
+    image: kgraph/pybackend:latest
+    container_name: kgraph-pybackend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./docker/config/config.json:/app/config.json:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  java:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kgraph/java:latest
+    container_name: kgraph-java
+    restart: unless-stopped
+    depends_on:
+      pybackend:
+        condition: service_started
+    ports:
+      - "8888:8888"
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./docker/config/application-local.yml:/app/config/application-local.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: kgraph/frontend:latest
+    container_name: kgraph-frontend
+    restart: unless-stopped
+    depends_on:
+      - java
+    ports:
+      - "${WEB_PORT:-80}:80"
