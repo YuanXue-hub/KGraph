@@ -15,7 +15,7 @@
       "port": 3306,
       "user": "root",
       "password": "your-mysql-password",
-      "database": "seedboot"
+      "database": "kgraph"
     },
     "redis": {
       "host": "localhost",
