@@ -29,6 +29,7 @@ export class FG3DAdapter implements GraphAdapter {
   private hoverEdgeIdx: number | null = null
   private pathNodeIds: Set<string> | null = null
   private pathEdgeIdx: Set<number> | null = null
+  private searchNodeIds: Set<string> | null = null
   private rafTicking = false
   private labelSprites = new Map<string, THREE.Sprite>()
   private linkMats = new Map<any, THREE.LineBasicMaterial>()
@@ -476,6 +477,7 @@ export class FG3DAdapter implements GraphAdapter {
     }
     const hasSelected = !!this.selectedNodeId || this.selectedEdgeIdx !== null
     const hasPath = !!this.pathNodeIds
+    const hasSearch = !!this.searchNodeIds
     const tNow = performance.now() / 1000
 
     nodes.forEach((n) => {
@@ -486,12 +488,15 @@ export class FG3DAdapter implements GraphAdapter {
       const coreMat = core.material as THREE.MeshPhongMaterial
       const glowIn = obj.children[1] as THREE.Sprite | undefined
       const glowOut = obj.children[2] as THREE.Sprite | undefined
-      // 路径高亮优先：压暗非路径节点；无路径时退回选中聚焦压暗
+      // 路径高亮优先：压暗非路径节点；搜索高亮不压暗；无路径时退回选中聚焦压暗
       const dimmed = hasPath
         ? !this.pathNodeIds!.has(n.id)
-        : hasSelected && !adjacentNodeIds.has(n.id)
+        : hasSearch
+          ? false
+          : hasSelected && !adjacentNodeIds.has(n.id)
       const selected = n.id === this.selectedNodeId
       const hovered = n.id === this.hoverNodeId
+      const searched = hasSearch && this.searchNodeIds!.has(n.id)
 
       // 微呼吸：光晕轻微律动，营造粒子场流动感
       if (!this.twinklePhase.has(n.id)) this.twinklePhase.set(n.id, Math.random() * Math.PI * 2)
@@ -508,32 +513,32 @@ export class FG3DAdapter implements GraphAdapter {
         core.scale.setScalar(1.0)
       }
 
-      // 双层光晕：选中/悬停放大增亮，非关联压暗（浅色底用较低基准透明度）
+      // 双层光晕：选中/悬停/搜索放大增亮，非关联压暗（浅色底用较低基准透明度）
       if (glowIn) {
         const gm = glowIn.material as THREE.SpriteMaterial
         const base = (glowIn.userData.baseScale as number) || glowIn.scale.x
-        const k = selected ? 1.25 : hovered ? 1.12 : 1
-        const f = selected ? 0.8 : hovered ? 0.62 : dimmed ? 0.06 : 0.5
+        const k = selected ? 1.25 : hovered ? 1.12 : searched ? 1.18 : 1
+        const f = selected ? 0.8 : hovered ? 0.62 : searched ? 0.7 : dimmed ? 0.06 : 0.5
         gm.opacity = f * twinkle
         glowIn.scale.set(base * k * twinkle, base * k * twinkle, 1)
       }
       if (glowOut) {
         const gm = glowOut.material as THREE.SpriteMaterial
         const base = (glowOut.userData.baseScale as number) || glowOut.scale.x
-        const k = selected ? 1.3 : hovered ? 1.16 : 1
-        const f = selected ? 0.6 : hovered ? 0.42 : dimmed ? 0.04 : 0.25
+        const k = selected ? 1.3 : hovered ? 1.16 : searched ? 1.22 : 1
+        const f = selected ? 0.6 : hovered ? 0.42 : searched ? 0.5 : dimmed ? 0.04 : 0.25
         gm.opacity = f * twinkle
         glowOut.scale.set(base * k * twinkle, base * k * twinkle, 1)
       }
 
-      // 标签透明度同步
+      // 标签透明度同步：搜索匹配节点保持全亮，其余正常
       const labelSprite = this.labelSprites.get(n.id)
       if (labelSprite) {
         ;(labelSprite.material as THREE.SpriteMaterial).opacity = dimmed
           ? hovered
             ? 0.55
             : 0.08
-          : 1.0
+          : searched ? 1.0 : 1.0
       }
     })
 
@@ -621,6 +626,15 @@ export class FG3DAdapter implements GraphAdapter {
   clearPathHighlight(): void {
     this.pathNodeIds = null
     this.pathEdgeIdx = null
+  }
+
+  /** 搜索高亮：仅高亮指定节点，其余节点保持正常（不压暗） */
+  highlightNodes(nodeIds: string[]): void {
+    this.searchNodeIds = new Set(nodeIds)
+  }
+
+  clearNodeHighlight(): void {
+    this.searchNodeIds = null
   }
 
   fitView(padding: number = 40): void {

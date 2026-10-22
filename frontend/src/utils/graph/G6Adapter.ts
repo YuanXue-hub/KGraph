@@ -38,25 +38,25 @@ export class G6Adapter implements GraphAdapter {
       layout: {
         type: 'force',
         preventOverlap: true,
-        nodeStrength: -120,
-        edgeStrength: 0.7,
-        collideStrength: 0.8,
-        alpha: 0.3,
-        linkDistance: 140
+        nodeStrength: -200,
+        edgeStrength: 0.6,
+        collideStrength: 1,
+        alpha: 0.35,
+        linkDistance: 110
       },
       defaultNode: {
-        size: 40,
+        size: 26,
         style: { fill: '#409eff', stroke: '#fff', lineWidth: 2 },
-        labelCfg: { style: { fill: '#303133', fontSize: 11 }, position: 'bottom' }
+        labelCfg: { style: { fill: '#303133', fontSize: 10 }, position: 'bottom' }
       },
       defaultEdge: {
         type: 'line',
         style: {
           stroke: '#c0c4cc',
-          lineWidth: 1.5,
-          endArrow: { path: G6.Arrow.triangle(6, 8, 0), fill: '#c0c4cc' }
+          lineWidth: 1.2,
+          endArrow: { path: G6.Arrow.triangle(5, 7, 0), fill: '#c0c4cc' }
         },
-        labelCfg: { style: { fill: '#909399', fontSize: 10 } }
+        labelCfg: { style: { fill: '#909399', fontSize: 9 } }
       },
       nodeStateStyles: {
         // 优先级从低到高：dim < highlight < hover < selected（后者覆盖前者同键样式）
@@ -200,6 +200,30 @@ export class G6Adapter implements GraphAdapter {
         this.graph.updateItem(e.id, { labelCfg: { style: { opacity: 1 } } })
         this.graph.setItemState(e.id, 'highlight', false)
         this.graph.setItemState(e.id, 'dim', false)
+      } catch { /* empty */ }
+    })
+  }
+
+  /** 搜索高亮：仅高亮指定节点，其余节点保持正常（不压暗） */
+  highlightNodes(nodeIds: string[]): void {
+    if (!this.graph) return
+    this.clearNodeHighlight()
+    const idSet = new Set(nodeIds)
+    this.currentNodes.forEach((n) => {
+      if (idSet.has(n.id)) {
+        try {
+          this.graph.setItemState(n.id, 'highlight', true)
+        } catch { /* empty */ }
+      }
+    })
+  }
+
+  clearNodeHighlight(): void {
+    if (!this.graph) return
+    this.currentNodes.forEach((n) => {
+      try {
+        this.graph.setItemState(n.id, 'highlight', false)
+        this.graph.setItemState(n.id, 'dim', false)
       } catch { /* empty */ }
     })
   }

@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -68,6 +69,22 @@ public class GraphExploreController {
         ThrowUtils.throwIf(modelId <= 0, ErrorCode.PARAMS_ERROR);
         Map<String, Object> stats = neo4jService.getStats(modelId);
         return ResultUtils.success(stats);
+    }
+
+    @GetMapping("/timeline")
+    @Operation(summary = "获取时间线事件（按关系的 vt_from 升序排列）")
+    public BaseResponse<List<Map<String, Object>>> getTimeline(long modelId) {
+        ThrowUtils.throwIf(modelId <= 0, ErrorCode.PARAMS_ERROR);
+        List<Map<String, Object>> timeline = neo4jService.getTimeline(modelId);
+        return ResultUtils.success(timeline);
+    }
+
+    @GetMapping("/times")
+    @Operation(summary = "获取图谱时间节点列表（关系 vt_from 去重升序，用于底部时间轴）")
+    public BaseResponse<List<String>> getDistinctTimes(long modelId) {
+        ThrowUtils.throwIf(modelId <= 0, ErrorCode.PARAMS_ERROR);
+        List<String> times = neo4jService.getDistinctTimes(modelId);
+        return ResultUtils.success(times);
     }
 
     @GetMapping("/path")

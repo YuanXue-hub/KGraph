@@ -55,7 +55,7 @@
                 v-model="inputText"
                 type="textarea"
                 :rows="8"
-                :placeholder="corpusMode === 'corpus' ? '选择语料后，文本内容将展示在此' : '请输入需要抽取的文本内容'"
+                placeholder=""
                 :disabled="corpusMode === 'corpus'"
               />
             </div>
@@ -244,13 +244,6 @@ const ENTITY_TYPES = [
   '组织机构', '专家学者', '学术期刊',
 ]
 
-const SAMPLE_TEXT = `近年来，人工智能与深度学习技术快速发展，知识图谱作为认知智能的核心技术之一，
-被广泛应用于数据分析与数据挖掘领域。中国农业科学院在水稻、小麦等农作物的育种与栽培技术上取得重要成果，
-同时利用大数据与机器学习算法推动智慧农业发展。在医药卫生领域，糖尿病、高血压等慢性病的防治受到关注，
-疫苗研发与基因检测技术不断突破。袁隆平院士的杂交水稻研究为全球粮食安全作出巨大贡献。
-清华大学与中国科学院在计算机视觉、自然语言处理等方向发表大量论文于 Nature 与 Science 等学术期刊。
-数字经济与高质量发展成为产业经济转型的新动能，企业通过供应链管理与创新驱动提升绩效。`
-
 const projects = ref<Project[]>([])
 const models = ref<ModelInfo[]>([])
 const corpusList = ref<Corpus[]>([])
@@ -258,7 +251,7 @@ const projectId = ref<number | string | undefined>()
 const modelId = ref<number | string | undefined>()
 const corpusId = ref<number | string | undefined>()
 const corpusMode = ref<'corpus' | 'manual'>('manual')
-const inputText = ref(SAMPLE_TEXT)
+const inputText = ref('')
 const extracting = ref(false)
 const result = ref<ExtractResult | null>(null)
 const stepActive = ref(0)

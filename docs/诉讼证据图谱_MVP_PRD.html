@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>诉讼证据图谱 MVP — 产品需求文档</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --text-2: #555;
+    --border: #e5e5e5;
+    --accent: #2563eb;
+    --accent-bg: #eff6ff;
+    --tag-p0: #dc2626;
+    --tag-p1: #d97706;
+    --tag-exclude: #6b7280;
+    --code-bg: #f4f4f5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15px; }
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  .subtitle { color: var(--text-2); font-size: 15px; margin-bottom: 32px; }
+  h2 { font-size: 22px; font-weight: 700; margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); }
+  h3 { font-size: 17px; font-weight: 600; margin: 28px 0 12px; color: var(--accent); }
+  h4 { font-size: 15px; font-weight: 600; margin: 18px 0 8px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 12px 24px; }
+  li { margin-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-bg); font-weight: 600; }
+  tr:nth-child(even) td { background: #f9fafb; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; color: #fff; }
+  .tag-p0 { background: var(--tag-p0); }
+  .tag-p1 { background: var(--tag-p1); }
+  .tag-exclude { background: var(--tag-exclude); }
+  .fr-id { font-family: "SF Mono", Menlo, monospace; color: var(--accent); font-weight: 600; }
+  .callout { background: var(--accent-bg); border-left: 4px solid var(--accent); padding: 12px 16px; margin: 12px 0; border-radius: 0 6px 6px 0; }
+  .callout strong { color: var(--accent); }
+  code { background: var(--code-bg); padding: 2px 6px; border-radius: 3px; font-size: 13px; font-family: "SF Mono", Menlo, monospace; }
+  .meta { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 32px; padding: 16px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+  .meta-item { font-size: 13px; }
+  .meta-item span { color: var(--text-2); }
+  .object-box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 12px 0; }
+  .object-box h4 { margin-top: 0; color: var(--text); }
+  .flow-diagram { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 24px; margin: 16px 0; text-align: center; font-size: 14px; }
+  .flow-node { display: inline-block; background: var(--accent-bg); color: var(--accent); padding: 8px 16px; border-radius: 6px; font-weight: 600; margin: 4px; }
+  .flow-arrow { display: inline-block; color: var(--text-2); font-size: 18px; margin: 0 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>诉讼证据图谱 MVP</h1>
+<p class="subtitle">基于 KGraph 知识图谱的诉讼证据时间线与因果链梳理工具 — 产品需求文档（PRD v1.0）</p>
+
+<div class="meta">
+  <div class="meta-item"><span>产品：</span>诉讼证据图谱（EvidenceGraph）</div>
+  <div class="meta-item"><span>版本：</span>MVP v1.0</div>
+  <div class="meta-item"><span>面向用户：</span>诉讼律师</div>
+  <div class="meta-item"><span>文档状态：</span>待评审</div>
+</div>
+
+<h2>1. 背景与目标</h2>
+
+<h3>1.1 问题</h3>
+<p>诉讼律师在案件办理中需要梳理大量证据材料（合同、邮件、转账记录、聊天截图、证人证言等），核心痛点：</p>
+<ul>
+  <li><strong>时间线还原耗时</strong>：人工从数十份证据中提取时间、主体、行为，整理时间线需 3-5 天</li>
+  <li><strong>事实遗漏风险</strong>：人工梳理易遗漏关键事实节点，直接影响诉讼请求的事实支撑</li>
+  <li><strong>证据矛盾难发现</strong>：多份证据对同一事实的表述冲突（如金额、日期不一致），人工比对极易遗漏</li>
+  <li><strong>因果关系不清晰</strong>："违约行为→损失结果→因果关系"的链条需律师在脑中建构，难以可视化呈现给法官/客户</li>
+</ul>
+
+<h3>1.2 产品决策</h3>
+<p>利用 KGraph 的双时态知识图谱能力，将非结构化证据自动转化为<strong>结构化时间线 + 因果链图 + 矛盾点清单</strong>，每条事实断言可回溯到证据原文。</p>
+
+<h3>1.3 目标（可观测）</h3>
+<ul>
+  <li>律师上传证据后，系统在 <strong>10 分钟内</strong>生成可审查的时间线与因果链初稿</li>
+  <li>律师可通过点击时间线节点<strong>直接跳转</strong>到对应证据原文片段</li>
+  <li>系统自动标注<strong>证据矛盾点</strong>（时间/金额/主体冲突），供律师复核</li>
+</ul>
+
+<h2>2. 范围</h2>
+
+<h3>2.1 P0 核心旅程</h3>
+<div class="flow-diagram">
+  <span class="flow-node">创建案件</span><span class="flow-arrow">→</span>
+  <span class="flow-node">上传证据</span><span class="flow-arrow">→</span>
+  <span class="flow-node">自动抽取</span><span class="flow-arrow">→</span>
+  <span class="flow-node">时间线/因果链/矛盾点</span><span class="flow-arrow">→</span>
+  <span class="flow-node">人工确认修正</span><span class="flow-arrow">→</span>
+  <span class="flow-node">导出报告</span>
+</div>
+
+<p><strong>完成证据</strong>：律师在时间线图上看到按时间排序的事实节点，点击节点可查看证据原文；因果链图展示行为间因果关系；矛盾点清单列出冲突项。</p>
+
+<h3>2.2 P1 支持功能</h3>
+<ul>
+  <li>多案件对比（同一当事人不同案件的事实串联）</li>
+  <li>法条推荐（基于事实要素匹配相关法条）</li>
+  <li>文书草稿辅助（基于时间线+因果链生成事实陈述段落）</li>
+</ul>
+
+<h3>2.3 明确排除</h3>
+<ul>
+  <li>自动生成完整法律文书（仅辅助事实陈述段落）</li>
+  <li>裁判结果预测</li>
+  <li>证据合法性/真实性判断（仅做事实抽取与矛盾检测，不做法律评价）</li>
+  <li>多用户协作/审批流</li>
+</ul>
+
+<h2>3. 产品契约</h2>
+
+<table>
+  <tr><th>要素</th><th>定义</th></tr>
+  <tr><td>主要用户</td><td>诉讼律师（主办/协办），需处理证据梳理的执业律师</td></tr>
+  <tr><td>核心任务</td><td>将散乱证据转化为结构化时间线 + 因果链，辅助事实认定</td></tr>
+  <tr><td>触发条件</td><td>律师创建新案件并上传证据材料</td></tr>
+  <tr><td>完成条件</td><td>生成可交互的时间线图、因果链图、矛盾点清单，每条断言可回溯原文</td></tr>
+  <tr><td>共享对象</td><td>案件（Case）— 包含证据、抽取结果、图谱数据</td></tr>
+  <tr><td>信任基础</td><td>每条事实断言附带 evidenceText 原文片段，律师可核验</td></tr>
+</table>
+
+<h2>4. 对象模型</h2>
+
+<div class="object-box">
+  <h4>Case（案件）</h4>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>id</td><td>Long</td><td>案件 ID</td></tr>
+    <tr><td>caseName</td><td>String</td><td>案件名称（如"XX 公司买卖合同纠纷案"）</td></tr>
+    <tr><td>caseType</td><td>Enum</td><td>案件类型：合同纠纷/侵权纠纷/劳动争议/[TBD 其他]</td></tr>
+    <tr><td>status</td><td>Enum</td><td>draft / extracting / ready / reviewed</td></tr>
+    <tr><td>createTime</td><td>DateTime</td><td>创建时间</td></tr>
+  </table>
+</div>
+
+<div class="object-box">
+  <h4>Evidence（证据）</h4>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>id</td><td>Long</td><td>证据 ID</td></tr>
+    <tr><td>caseId</td><td>Long</td><td>所属案件</td></tr>
+    <tr><td>fileName</td><td>String</td><td>文件名</td></tr>
+    <tr><td>fileType</td><td>Enum</td><td>pdf / docx / txt / image</td></tr>
+    <tr><td>content</td><td>Text</td><td>解析后的文本内容</td></tr>
+    <tr><td>pageCount</td><td>Int</td><td>页数（PDF）</td></tr>
+    <tr><td>uploadTime</td><td>DateTime</td><td>上传时间</td></tr>
+  </table>
+</div>
+
+<div class="object-box">
+  <h4>Entity（实体）— 复用 KGraph ExtractedEntity</h4>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>canonicalName</td><td>String</td><td>规范化名称（如"甲方"→"XX 科技有限公司"）</td></tr>
+    <tr><td>type</td><td>Enum</td><td>person / organization / action / amount / time / subject_matter / [TBD]</td></tr>
+    <tr><td>evidenceText</td><td>String</td><td>原文证据片段</td></tr>
+    <tr><td>evidenceSpans</td><td>Array</td><td>原文位置（页+字符偏移）</td></tr>
+    <tr><td>confidence</td><td>Float</td><td>抽取置信度 0-1</td></tr>
+    <tr><td>verified</td><td>Boolean</td><td>律师是否确认（默认 false）</td></tr>
+  </table>
+</div>
+
+<div class="object-box">
+  <h4>TimeAnchor（时间锚点）— 复用 KGraph TimeAnchor</h4>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>rawText</td><td>String</td><td>原文时间表述（如"2023 年 3 月 15 日"）</td></tr>
+    <tr><td>normISO</td><td>String</td><td>标准化 ISO 时间（如"2023-03-15"）</td></tr>
+    <tr><td>precision</td><td>Enum</td><td>year / month / day / datetime</td></tr>
+    <tr><td>evidenceText</td><td>String</td><td>原文证据片段</td></tr>
+  </table>
+</div>
+
+<div class="object-box">
+  <h4>Relation（关系）— 复用 KGraph ExtractedRelation</h4>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>subject</td><td>String</td><td>主体实体名</td></tr>
+    <tr><td>predicate</td><td>String</td><td>谓词（如"签订"/"支付"/"违约"/"交付"）</td></tr>
+    <tr><td>object</td><td>String</td><td>客体实体名</td></tr>
+    <tr><td>vt_from</td><td>String</td><td>有效起始时间</td></tr>
+    <tr><td>vt_to</td><td>String</td><td>有效结束时间</td></tr>
+    <tr><td>evidenceText</td><td>String</td><td>原文证据片段</td></tr>
+    <tr><td>confidence</td><td>Float</td><td>置信度</td></tr>
+  </table>
+</div>
+
+<div class="object-box">
+  <h4>CausalEdge（因果边）— 复用 KGraph CausalEdge</h4>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>cause</td><td>String</td><td>因（行为实体名）</td></tr>
+    <tr><td>effect</td><td>String</td><td>果（行为/结果实体名）</td></tr>
+    <tr><td>signalWord</td><td>String</td><td>因果信号词（如"导致"/"因此"/"致使"）</td></tr>
+    <tr><td>evidenceText</td><td>String</td><td>原文证据片段</td></tr>
+  </table>
+</div>
+
+<div class="object-box">
+  <h4>Contradiction（矛盾点）— MVP 新增</h4>
+  <table>
+    <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+    <tr><td>id</td><td>Long</td><td>矛盾点 ID</td></tr>
+    <tr><td>type</td><td>Enum</td><td>time_conflict / amount_conflict / party_conflict / fact_conflict</td></tr>
+    <tr><td>description</td><td>String</td><td>矛盾描述（如"证据 A 称 3 月付款，证据 B 称 5 月付款"）</td></tr>
+    <tr><td>evidenceRefs</td><td>Array</td><td>涉及的证据片段引用列表</td></tr>
+    <tr><td>severity</td><td>Enum</td><td>high / medium / low</td></tr>
+    <tr><td>resolved</td><td>Boolean</td><td>律师是否已处理（默认 false）</td></tr>
+  </table>
+</div>
+
+<h2>5. 功能需求</h2>
+
+<h3><span class="fr-id">FR-01</span> 案件创建 <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：律师创建新案件，作为证据和图谱的容器。</p>
+<p><strong>触发</strong>：律师在案件列表页点击"新建案件"。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li>必填字段：案件名称、案件类型</li>
+  <li>案件名称不可为空，长度 1-100 字符</li>
+  <li>创建后案件状态为 <code>draft</code></li>
+</ul>
+<p><strong>结果</strong>：生成案件记录，跳转到案件详情页（证据上传区）。</p>
+
+<h3><span class="fr-id">FR-02</span> 证据上传与解析 <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：律师上传证据材料，系统解析为文本。</p>
+<p><strong>触发</strong>：在案件详情页上传文件。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li>支持格式：PDF、DOCX、TXT、图片（PNG/JPG，需 OCR）</li>
+  <li>单文件大小上限：[TBD，建议 50MB]</li>
+  <li>单案件证据数量上限：[TBD，建议 100 份]</li>
+  <li>上传后自动解析文本，记录页数</li>
+  <li>解析失败的文件标记为 <code>parse_failed</code>，律师可重新上传</li>
+</ul>
+<p><strong>结果</strong>：证据列表展示文件名、页数、解析状态。</p>
+<p><strong>异常</strong>：不支持的格式 → 提示"暂不支持该格式"；解析失败 → 标记并允许重试。</p>
+
+<h3><span class="fr-id">FR-03</span> 知识抽取（LLM 三阶段） <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：调用 KGraph LLM 抽取能力，从证据文本中抽取实体、关系、时间锚点、因果边。</p>
+<p><strong>触发</strong>：律师点击"开始抽取"按钮（需至少上传 1 份已解析的证据）。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li>调用 KGraph <code>/api/extract</code> 端点，传入所有证据文本拼接</li>
+  <li>抽取实体类型限定为法律场景：person / organization / action / amount / time / subject_matter</li>
+  <li>抽取关系谓词限定为法律行为：签订 / 支付 / 交付 / 违约 / 通知 / 解除 / 起诉 / 判决 等</li>
+  <li>案件状态切换为 <code>extracting</code>，展示进度</li>
+  <li>抽取完成后状态切换为 <code>ready</code></li>
+</ul>
+<p><strong>结果</strong>：生成实体、关系、时间锚点、因果边数据，写入 Neo4j 图谱。</p>
+<p><strong>异常</strong>：抽取超时（[TBD，建议 30 分钟]）→ 标记失败，允许重试；部分证据抽取失败 → 记录并继续，不中断整体。</p>
+
+<h3><span class="fr-id">FR-04</span> 时间线可视化 <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：将时间锚点 + 关联关系按时间顺序展示为交互式时间线。</p>
+<p><strong>触发</strong>：抽取完成后，律师进入"时间线"标签页。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li>按 <code>normISO</code> 升序排列所有时间锚点</li>
+  <li>每个时间节点展示：时间、主体、行为（关系谓词）、客体</li>
+  <li>节点颜色按主体区分（同一主体同色）</li>
+  <li>点击节点 → 右侧面板展示该节点的 evidenceText 原文片段 + 证据文件名 + 页码</li>
+  <li>precision 为 year/month 的节点显示为区间（如"2023 年"或"2023 年 3 月"）</li>
+</ul>
+<p><strong>结果</strong>：律师可沿时间轴浏览案件事实全貌。</p>
+<p><strong>异常</strong>：无时间锚点 → 提示"未抽取到时间信息"。</p>
+
+<h3><span class="fr-id">FR-05</span> 因果链可视化 <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：将因果边展示为有向图，呈现法律因果关系链。</p>
+<p><strong>触发</strong>：律师进入"因果链"标签页。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li>节点 = 行为实体，边 = 因果关系（cause → effect）</li>
+  <li>边上标注 signalWord（如"导致"）</li>
+  <li>点击节点 → 展示该行为的 evidenceText</li>
+  <li>支持高亮某条因果路径（如"违约 → 损失 → 赔偿请求"）</li>
+</ul>
+<p><strong>结果</strong>：律师可直观查看因果关系链，用于构建诉讼请求的事实基础。</p>
+<p><strong>异常</strong>：无因果边 → 提示"未抽取到因果关系"。</p>
+
+<h3><span class="fr-id">FR-06</span> 矛盾点检测 <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：自动检测多份证据间的事实冲突，降低遗漏风险。</p>
+<p><strong>触发</strong>：抽取完成后自动运行，律师进入"矛盾点"标签页查看。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li><strong>time_conflict</strong>：同一行为在不同证据中时间不一致（如付款日期）</li>
+  <li><strong>amount_conflict</strong>：同一笔金额在不同证据中数值不一致</li>
+  <li><strong>party_conflict</strong>：同一主体在不同证据中名称/角色不一致（需结合 aliasMap）</li>
+  <li><strong>fact_conflict</strong>：同一事实的表述相反（如"已交付"vs"未交付"）</li>
+  <li>severity 判定：金额/时间差异 &gt; 阈值 → high；表述相反 → high；名称差异 → medium</li>
+  <li>每条矛盾点列出涉及的证据片段引用，律师可逐条跳转核验</li>
+</ul>
+<p><strong>结果</strong>：矛盾点清单按 severity 降序排列，律师可标记"已处理"。</p>
+
+<div class="callout">
+  <strong>设计说明：</strong>矛盾检测基于图谱中的实体/关系对齐，而非简单文本匹配。例如，两笔"付款"行为若主体和客体相同但时间不同，则判定为 time_conflict。
+</div>
+
+<h3><span class="fr-id">FR-07</span> 证据原文回溯 <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：任何抽取结果（实体/关系/时间/因果/矛盾点）均可追溯到证据原文。</p>
+<p><strong>触发</strong>：律师在时间线/因果链/矛盾点中点击任意节点或条目。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li>右侧面板展示 evidenceText（原文片段）</li>
+  <li>展示证据文件名、页码</li>
+  <li>高亮原文中对应的文本片段（基于 evidenceSpans）</li>
+  <li>支持"在原文中查看"按钮，跳转到证据全文浏览并定位到该片段</li>
+</ul>
+<p><strong>结果</strong>：律师可核验每条断言的真实性，建立对 AI 抽取结果的信任。</p>
+
+<h3><span class="fr-id">FR-08</span> 人工确认与修正 <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：律师对抽取结果进行确认或修正，形成可信的案件事实图谱。</p>
+<p><strong>触发</strong>：律师在时间线/因果链中对节点进行操作。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li>每个实体/关系/时间锚点有 <code>verified</code> 状态（默认 false）</li>
+  <li>律师可"确认"（verified=true）、"编辑"（修改名称/时间/金额）、"删除"（错误抽取）</li>
+  <li>编辑后需保留 evidenceText（不可删除证据）</li>
+  <li>修正操作记录审计日志（操作人、时间、修改前后值）</li>
+</ul>
+<p><strong>结果</strong>：案件状态切换为 <code>reviewed</code>，图谱数据为律师确认版本。</p>
+
+<h3><span class="fr-id">FR-09</span> 导出报告 <span class="tag tag-p0">P0</span></h3>
+<p><strong>目的</strong>：将确认后的时间线、因果链、矛盾点导出为文档，用于案件讨论或提交。</p>
+<p><strong>触发</strong>：律师点击"导出报告"。</p>
+<p><strong>处理规则</strong>：</p>
+<ul>
+  <li>导出格式：[TBD，建议 DOCX + PDF]</li>
+  <li>报告内容：案件基本信息、时间线表、因果链图（截图）、矛盾点清单、证据引用索引</li>
+  <li>仅导出 verified=true 的条目</li>
+</ul>
+<p><strong>结果</strong>：生成可下载的报告文件。</p>
+
+<h2>6. 共享规则与异常</h2>
+
+<h3>6.1 抽取质量阈值</h3>
+<table>
+  <tr><th>指标</th><th>阈值</th><th>处理</th></tr>
+  <tr><td>实体置信度</td><td>&lt; 0.5</td><td>标记为"低置信"，默认不 verified，律师需复核</td></tr>
+  <tr><td>关系置信度</td><td>&lt; 0.5</td><td>同上</td></tr>
+  <tr><td>证据覆盖率</td><td>&lt; 30%</td><td>提示"证据文本可能未完整解析"，建议检查</td></tr>
+</table>
+
+<h3>6.2 指代消解规则</h3>
+<ul>
+  <li>同一当事人在不同证据中的别名（甲方/XX公司/被告）通过 aliasMap 合并为同一实体</li>
+  <li>合并后以出现频率最高的全称为 canonicalName</li>
+  <li>律师可手动合并/拆分实体</li>
+</ul>
+
+<h3>6.3 数据隔离</h3>
+<ul>
+  <li>每个案件的图谱数据独立存储（Neo4j 中按 caseId 分区）</li>
+  <li>律师只能查看自己创建的案件（MVP 阶段单用户）</li>
+</ul>
+
+<h3>6.4 异常处理汇总</h3>
+<table>
+  <tr><th>场景</th><th>处理</th></tr>
+  <tr><td>证据解析失败</td><td>标记 parse_failed，允许重新上传</td></tr>
+  <tr><td>抽取超时</td><td>标记失败，允许重试（最多 [TBD] 次）</td></tr>
+  <tr><td>抽取结果为空</td><td>提示"未抽取到有效信息"，建议检查证据文本质量</td></tr>
+  <tr><td>无时间锚点</td><td>时间线页提示，不阻断因果链/矛盾点展示</td></tr>
+  <tr><td>无因果边</td><td>因果链页提示</td></tr>
+  <tr><td>矛盾点误报</td><td>律师可标记"误报"，不影响图谱数据</td></tr>
+</table>
+
+<h2>7. 验证指标</h2>
+<p>MVP 阶段通过以下指标验证产品价值：</p>
+<table>
+  <tr><th>指标</th><th>目标</th><th>测量方式</th></tr>
+  <tr><td>抽取准确率</td><td>实体/关系 ≥ 85%</td><td>律师确认率（verified / 总数）</td></tr>
+  <tr><td>时间线生成耗时</td><td>≤ 10 分钟</td><td>抽取开始到 ready 状态的耗时</td></tr>
+  <tr><td>矛盾点检出率</td><td>≥ 70%（对比人工）</td><td>人工发现的矛盾点中被系统检出的比例</td></tr>
+  <tr><td>律师接受度</td><td>NPS ≥ 40</td><td>律师使用后问卷</td></tr>
+  <tr><td>证据梳理时间节省</td><td>≥ 50%</td><td>对比律师手动梳理同案件的时间</td></tr>
+</table>
+
+<h2>8. 开放问题</h2>
+<table>
+  <tr><th>编号</th><th>问题</th><th>影响</th></tr>
+  <tr><td>OQ-01</td><td>证据文件大小/数量上限具体值</td><td>影响上传模块的限制配置</td></tr>
+  <tr><td>OQ-02</td><td>OCR 服务选型（图片证据）</td><td>影响图片证据的解析能力</td></tr>
+  <tr><td>OQ-03</td><td>抽取超时阈值与重试次数</td><td>影响用户等待体验</td></tr>
+  <tr><td>OQ-04</td><td>报告导出格式优先级（DOCX vs PDF）</td><td>影响导出模块开发顺序</td></tr>
+  <tr><td>OQ-05</td><td>矛盾检测的金额/时间差异阈值</td><td>影响矛盾点检出率和误报率</td></tr>
+</table>
+
+</div>
+</body>
+</html>

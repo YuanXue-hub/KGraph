@@ -510,21 +510,27 @@ export const extractionApi = {
 
 /* ============ 图谱探索 ============ */
 export const exploreApi = {
-  nodes(modelId: number | string, limit: number = 100) {
+  nodes(modelId: number | string, limit: number = 100, asOf?: string) {
+    const params: Record<string, any> = { modelId, limit }
+    if (asOf) params.asOf = asOf
     return request({
       url: '/explore/nodes',
       method: 'get',
-      params: { modelId, limit }
+      params
     })
   },
-  neighbors(nodeId: string) {
-    return request({ url: '/explore/neighbors', method: 'get', params: { nodeId } })
+  neighbors(nodeId: string, asOf?: string) {
+    const params: Record<string, any> = { nodeId }
+    if (asOf) params.asOf = asOf
+    return request({ url: '/explore/neighbors', method: 'get', params })
   },
-  search(modelId: number | string, keyword: string) {
+  search(modelId: number | string, keyword: string, asOf?: string) {
+    const params: Record<string, any> = { modelId, keyword }
+    if (asOf) params.asOf = asOf
     return request({
       url: '/explore/search',
       method: 'get',
-      params: { modelId, keyword }
+      params
     })
   },
   stats(modelId: number | string) {
@@ -535,6 +541,20 @@ export const exploreApi = {
       url: '/explore/path',
       method: 'get',
       params: { modelId, fromId, toId, maxHops }
+    })
+  },
+  timeline(modelId: number | string) {
+    return request({
+      url: '/explore/timeline',
+      method: 'get',
+      params: { modelId }
+    })
+  },
+  times(modelId: number | string) {
+    return request({
+      url: '/explore/times',
+      method: 'get',
+      params: { modelId }
     })
   }
 }

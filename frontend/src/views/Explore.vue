@@ -39,6 +39,7 @@
               placeholder="输入关键词搜索"
               clearable
               @keyup.enter="handleSearch"
+              @clear="onKeywordClear"
             >
               <template #append>
                 <el-button :icon="Search" @click="handleSearch" />
@@ -96,27 +97,97 @@
             </el-radio-group>
             <el-button size="small" :icon="Refresh" @click="reloadGraph">重新加载</el-button>
             <el-button size="small" :icon="FullScreen" @click="fitView">适应画布</el-button>
+            <el-button
+              size="small"
+              :icon="Clock"
+              :type="detailMode === 'timeline' ? 'primary' : 'default'"
+              @click="toggleTimeline"
+            >时间线</el-button>
           </div>
         </div>
         <div class="graph-wrap">
-          <div ref="graphRef" class="graph-canvas" v-loading="graphLoading"></div>
-          <el-empty v-if="!modelId" description="请先选择模型" class="graph-empty" />
+          <div class="graph-row">
+            <div class="graph-main">
+              <div ref="graphRef" class="graph-canvas" v-loading="graphLoading"></div>
+              <el-empty v-if="!modelId" description="请先选择模型" class="graph-empty" />
+            </div>
+          </div>
+          <!-- 底部时间轴：点击时间节点查看该时刻的图谱快照 -->
+          <div class="time-axis" v-if="timeAxis.length">
+            <div class="time-axis-track">
+              <div class="time-axis-line"></div>
+              <div
+                v-for="t in timeAxis"
+                :key="t"
+                class="time-axis-node"
+                :class="{ active: snapshotTime === t }"
+                @click="onTimePointClick(t)"
+                :title="`时间快照：${t}`"
+              >
+                <div class="time-axis-dot"></div>
+                <div class="time-axis-label">{{ t }}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- 右侧详情面板：flex 布局参与流，展开时挤压中间图谱，收起时恢复 -->
-      <div class="explore-detail" :class="{ 'detail-collapsed': !selectedItem }">
+      <!-- 右侧详情面板：节点详情 / 时间线 互斥展示 -->
+      <div class="explore-detail" :class="{ 'detail-collapsed': !selectedItem && detailMode !== 'timeline' }">
         <div class="detail-header">
           <span class="detail-title">{{ detailTitle }}</span>
           <el-button
-            v-if="selectedItem"
+            v-if="selectedItem || detailMode === 'timeline'"
             size="small"
             :icon="Close"
             link
             @click="clearSelection"
           />
         </div>
-        <div class="detail-body" v-if="selectedItem">
+        <!-- 时间线模式 -->
+        <div class="detail-body timeline-body" v-if="detailMode === 'timeline'">
+          <!-- 时间快照过滤标识（时间轴联动） -->
+          <div class="timeline-filter" v-if="timelineFilterTime">
+            <span class="timeline-filter-label">时间快照：</span>
+            <span class="timeline-filter-node">{{ timelineFilterTime }}</span>
+            <el-button size="small" :icon="Close" link @click="clearTimelineFilter" />
+          </div>
+          <!-- 节点快照过滤标识 -->
+          <div class="timeline-filter" v-if="timelineFilterNodeId">
+            <span class="timeline-filter-label">节点快照：</span>
+            <span class="timeline-filter-node">{{ timelineFilterNodeName }}</span>
+            <el-button size="small" :icon="Close" link @click="clearTimelineFilter" />
+          </div>
+          <div v-loading="timelineLoading">
+            <el-empty
+              v-if="!filteredTimeline.length && !timelineLoading"
+              description="暂无时间线数据"
+              :image-size="60"
+            />
+            <div class="timeline-list" v-else>
+              <div
+                v-for="(ev, idx) in filteredTimeline"
+                :key="ev.relationId || idx"
+                class="timeline-item"
+                :class="{ active: activeTimelineIdx === idx }"
+                @click="onTimelineClick(ev, idx)"
+              >
+                <div class="timeline-dot" :style="{ background: getColorByType(ev.sourceType) }"></div>
+                <div class="timeline-content">
+                  <div class="timeline-time">{{ ev.time }}</div>
+                  <div class="timeline-event">
+                    <span class="ev-node" :style="{ color: getColorByType(ev.sourceType) }">{{ ev.sourceName }}</span>
+                    <span class="ev-relation">{{ ev.relation }}</span>
+                    <span class="ev-node" :style="{ color: getColorByType(ev.targetType) }">{{ ev.targetName }}</span>
+                  </div>
+                  <div class="timeline-evidence" v-if="ev.evidence">{{ ev.evidence }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- 节点/关系详情模式 -->
+        <div class="detail-body" v-else-if="selectedItem">
           <!-- 类型徽章 -->
           <div class="detail-section">
             <div class="detail-section-title">类型</div>
@@ -228,7 +299,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, computed, nextTick, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, FullScreen, Coin, Connection, Close } from '@element-plus/icons-vue'
+import { Search, Refresh, FullScreen, Coin, Connection, Close, Clock } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { projectApi, modelApi, exploreApi } from '@/api'
 import { G6Adapter } from '@/utils/graph/G6Adapter'
@@ -266,6 +337,47 @@ const graphLoading = ref(false)
 const selectedItem = ref<DetailItem | null>(null)
 const graphKind = ref<GraphKind>('2d')
 
+// 时间线
+interface TimelineEvent {
+  sourceId: string
+  sourceName: string
+  sourceType: string
+  targetId: string
+  targetName: string
+  targetType: string
+  relation: string
+  time: string
+  evidence: string
+  relationId: string
+}
+const timelineLoading = ref(false)
+const timeline = ref<TimelineEvent[]>([])
+const activeTimelineIdx = ref<number>(-1)
+// 右侧详情面板模式：node=节点/关系详情，timeline=时间线
+const detailMode = ref<'node' | 'timeline'>('node')
+// 底部时间轴：图谱时间节点列表 + 当前快照时间
+const timeAxis = ref<string[]>([])
+const snapshotTime = ref<string | null>(null)
+// 节点时间快照：选中节点后仅展示该节点参与的时间线事件
+const timelineFilterNodeId = ref<string | null>(null)
+const timelineFilterNodeName = ref<string>('')
+// 时间快照过滤：点击时间轴节点后，时间线仅展示该时刻及之前的事件（与图谱快照语义一致）
+const timelineFilterTime = ref<string | null>(null)
+const filteredTimeline = computed(() => {
+  let list = timeline.value
+  // 时间过滤：vt_from <= snapshotTime（字符串比较，与后端查询口径一致）
+  if (timelineFilterTime.value) {
+    const t = timelineFilterTime.value
+    list = list.filter((ev) => ev.time && ev.time <= t)
+  }
+  // 节点过滤：仅展示该节点参与的事件
+  if (timelineFilterNodeId.value) {
+    const id = timelineFilterNodeId.value
+    list = list.filter((ev) => ev.sourceId === id || ev.targetId === id)
+  }
+  return list
+})
+
 // 路径检索（BFS 最短路）
 interface PathHop {
   from: string
@@ -283,6 +395,7 @@ const graphRef = ref<HTMLElement>()
 const pieRef = ref<HTMLElement>()
 let adapter: GraphAdapter | null = null
 let pieChart: any = null
+let resizeObserver: ResizeObserver | null = null
 const nodeSet = new Map<string, GraphNode>()
 const edgeSet = new Map<string, GraphEdge>()
 
@@ -308,6 +421,7 @@ const hasTypeDist = computed(() => {
 })
 
 const detailTitle = computed(() => {
+  if (detailMode.value === 'timeline') return '时间线'
   if (!selectedItem.value) return '详情'
   return selectedItem.value.kind === 'node' ? '节点详情' : '关系详情'
 })
@@ -353,8 +467,19 @@ async function onModelChange() {
   selectedItem.value = null
   pathResult.value = null
   pathTarget.value = ''
+  keyword.value = ''
+  timeline.value = []
+  activeTimelineIdx.value = -1
+  timelineFilterNodeId.value = null
+  timelineFilterNodeName.value = ''
+  timelineFilterTime.value = null
+  snapshotTime.value = null
+  timeAxis.value = []
+  detailMode.value = 'node'
+  adapter?.clearNodeHighlight()
   await loadStats()
   await loadInitialNodes()
+  await loadTimeAxis()
 }
 
 async function loadStats() {
@@ -386,11 +511,11 @@ function renderPie() {
   })
 }
 
-async function loadInitialNodes() {
+async function loadInitialNodes(asOf?: string) {
   if (!modelId.value) return
   graphLoading.value = true
   try {
-    const res = await exploreApi.nodes(modelId.value, 100)
+    const res = await exploreApi.nodes(modelId.value, 100, asOf)
     const data = res.data || {}
     const nodes = data.nodes || []
     const edges = data.edges || data.relations || []
@@ -491,6 +616,8 @@ function selectNodeFromModel(model: GraphNode) {
     color: model.color || getColorByType(raw.type),
     rawData: raw
   }
+  // 点击节点 → 切换到节点详情模式，替换时间线
+  detailMode.value = 'node'
 }
 
 function selectEdgeFromModel(model: GraphEdge) {
@@ -513,12 +640,21 @@ function selectEdgeFromModel(model: GraphEdge) {
     color: '#67c23a',
     rawData: edgeData
   }
+  // 点击关系 → 切换到节点详情模式，替换时间线
+  detailMode.value = 'node'
 }
 
 function clearSelection() {
   adapter?.clearSelection()
   selectedItem.value = null
   pathResult.value = null
+  timelineFilterNodeId.value = null
+  timelineFilterNodeName.value = ''
+  timelineFilterTime.value = null
+  // 若当前在时间线模式，关闭时间线回到收起状态
+  if (detailMode.value === 'timeline') {
+    detailMode.value = 'node'
+  }
 }
 
 // ==================== 路径检索（BFS 最短路） ====================
@@ -634,7 +770,7 @@ function refreshGraph() {
 }
 
 async function expandNeighbors(nodeId: string) {
-  const res = await exploreApi.neighbors(nodeId)
+  const res = await exploreApi.neighbors(nodeId, snapshotTime.value ?? undefined)
   const data = res.data || {}
   const nodes = data.nodes || []
   const edges = data.edges || data.relations || []
@@ -667,30 +803,123 @@ async function handleSearch() {
   }
   graphLoading.value = true
   try {
-    const res = await exploreApi.search(modelId.value, keyword.value.trim())
+    const res = await exploreApi.search(modelId.value, keyword.value.trim(), snapshotTime.value ?? undefined)
     const data = res.data || {}
     const nodes = data.nodes || []
     const edges = data.edges || data.relations || []
     if (!nodes.length) {
       ElMessage.info('未找到匹配节点')
+      adapter?.clearNodeHighlight()
       return
     }
-    nodeSet.clear()
-    edgeSet.clear()
-    selectedItem.value = null
-    pathResult.value = null
+    // 不清空画布：将搜索结果中不在画布上的节点/边补充进来，再高亮匹配节点
+    const matchedIds: string[] = []
+    let added = 0
     nodes.forEach((n: any) => {
       const id = String(n.elementId ?? n.id)
-      nodeSet.set(id, transformNode(n))
+      matchedIds.push(id)
+      if (!nodeSet.has(id)) {
+        nodeSet.set(id, transformNode(n))
+        added++
+      }
     })
     edges.forEach((e: any) => {
       const key = `${e.source}-${e.target}-${e.label || ''}`
-      edgeSet.set(key, transformEdge(e))
+      if (!edgeSet.has(key)) edgeSet.set(key, transformEdge(e, key))
     })
-    refreshGraph()
-    ElMessage.success(`找到 ${nodes.length} 个相关节点`)
+    if (added > 0) refreshGraph()
+    // 高亮所有匹配节点（其余节点保持正常显示，不压暗）
+    adapter?.highlightNodes(matchedIds)
+    ElMessage.success(`找到 ${nodes.length} 个匹配节点，已高亮`)
   } finally {
     graphLoading.value = false
+  }
+}
+
+/** 清空搜索关键词时清除搜索高亮 */
+function onKeywordClear() {
+  if (!keyword.value) {
+    adapter?.clearNodeHighlight()
+  }
+}
+
+/* ============ 时间线 ============ */
+async function toggleTimeline() {
+  // 若当前已是时间线模式，则关闭（回到节点详情或收起）
+  if (detailMode.value === 'timeline') {
+    detailMode.value = 'node'
+    return
+  }
+  // 切换到时间线模式：在右侧详情面板展示时间线，替换节点详情
+  detailMode.value = 'timeline'
+  selectedItem.value = null
+  // 仅清除节点过滤，保留时间轴联动的时间过滤
+  timelineFilterNodeId.value = null
+  timelineFilterNodeName.value = ''
+  if (modelId.value && !timeline.value.length) {
+    await loadTimeline()
+  }
+  // 面板展开后调整图谱画布尺寸
+  nextTick(() => {
+    if (adapter && graphRef.value) {
+      adapter.resize(graphRef.value.offsetWidth, graphRef.value.offsetHeight)
+    }
+  })
+}
+
+async function loadTimeline() {
+  if (!modelId.value) return
+  timelineLoading.value = true
+  try {
+    const res = await exploreApi.timeline(modelId.value)
+    const list = (res.data || []) as TimelineEvent[]
+    timeline.value = list
+  } finally {
+    timelineLoading.value = false
+  }
+}
+
+// 加载图谱时间节点（关系 vt_from 去重升序），用于底部时间轴
+async function loadTimeAxis() {
+  if (!modelId.value) {
+    timeAxis.value = []
+    return
+  }
+  try {
+    const res = await exploreApi.times(modelId.value)
+    timeAxis.value = (res.data || []) as string[]
+  } catch {
+    timeAxis.value = []
+  }
+}
+
+// 点击时间轴上的某个时间点，加载该时刻的图谱快照，并同步过滤时间线
+async function onTimePointClick(time: string) {
+  snapshotTime.value = time
+  timelineFilterTime.value = time
+  selectedItem.value = null
+  await loadInitialNodes(time)
+}
+
+function onTimelineClick(ev: TimelineEvent, idx: number) {
+  activeTimelineIdx.value = idx
+  // 联动高亮图谱中对应的主体与客体节点
+  const ids = [ev.sourceId, ev.targetId].filter(Boolean).map(String)
+  if (ids.length) {
+    adapter?.highlightNodes(ids)
+  }
+}
+
+// 清除时间线过滤（节点过滤 + 时间过滤），并恢复图谱全量
+async function clearTimelineFilter() {
+  const hadTimeFilter = !!timelineFilterTime.value
+  timelineFilterNodeId.value = null
+  timelineFilterNodeName.value = ''
+  timelineFilterTime.value = null
+  // 若清除的是时间过滤，同步恢复图谱全量
+  if (hadTimeFilter) {
+    snapshotTime.value = null
+    await loadInitialNodes()
   }
 }
 
@@ -698,6 +927,14 @@ async function reloadGraph() {
   selectedItem.value = null
   pathResult.value = null
   pathTarget.value = ''
+  keyword.value = ''
+  activeTimelineIdx.value = -1
+  timelineFilterNodeId.value = null
+  timelineFilterNodeName.value = ''
+  timelineFilterTime.value = null
+  snapshotTime.value = null
+  detailMode.value = 'node'
+  adapter?.clearNodeHighlight()
   await loadInitialNodes()
 }
 
@@ -712,8 +949,8 @@ function handleResize() {
   if (pieChart) pieChart.resize()
 }
 
-// 节点详情面板展开/收起时，等待 CSS 过渡结束后调整图谱画布尺寸
-watch(selectedItem, () => {
+// 右侧面板（节点详情/时间线）展开/收起时，等待 CSS 过渡结束后调整图谱画布尺寸
+watch([selectedItem, detailMode], () => {
   if (!adapter || !graphRef.value) return
   // 过渡过程中持续同步几次，结束后最终修正
   const steps = [60, 140, 260]
@@ -729,10 +966,22 @@ watch(selectedItem, () => {
 onMounted(async () => {
   await loadProjectsAndModels()
   window.addEventListener('resize', handleResize)
+  // 监听画布容器尺寸变化：时间线/详情面板收起、窗口缩放时自动同步 G6 画布尺寸，
+  // 避免 CSS width 过渡结束后留下空白区域
+  if (graphRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      if (adapter && graphRef.value) {
+        adapter.resize(graphRef.value.offsetWidth, graphRef.value.offsetHeight)
+      }
+    })
+    resizeObserver.observe(graphRef.value)
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  resizeObserver?.disconnect()
+  resizeObserver = null
   if (adapter) {
     adapter.destroy()
     adapter = null
@@ -995,6 +1244,8 @@ onBeforeUnmount(() => {
 
 .graph-wrap {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   position: relative;
   background:
     radial-gradient(circle at 28% 22%, rgba(22, 93, 255, 0.05) 0%, transparent 42%),
@@ -1004,9 +1255,197 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.graph-row {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.graph-main {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .graph-canvas {
   width: 100%;
   height: 100%;
+}
+
+/* 时间线面板 */
+.timeline-panel {
+  width: 340px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width var(--t-base), opacity var(--t-base);
+}
+
+.timeline-panel.timeline-collapsed {
+  width: 0;
+  border-left: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.timeline-header {
+  padding: 12px 16px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.timeline-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.timeline-count {
+  font-size: 12px;
+  color: var(--text-3);
+  background: var(--bg-soft);
+  border: 1px solid var(--border-2);
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.timeline-header .el-button {
+  margin-left: auto;
+}
+
+.timeline-filter {
+  padding: 8px 16px;
+  background: rgba(22, 93, 255, 0.06);
+  border-bottom: 1px solid var(--border-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.timeline-filter-label {
+  color: var(--text-3);
+}
+
+.timeline-filter-node {
+  color: var(--brand-primary);
+  font-weight: 600;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-filter .el-button {
+  margin-left: auto;
+}
+
+.timeline-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 8px 12px 4px;
+  min-height: 0;
+}
+
+.timeline-list {
+  position: relative;
+  padding-left: 8px;
+}
+
+.timeline-list::before {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--brand-primary), var(--brand-accent));
+  opacity: 0.4;
+  border-radius: 2px;
+}
+
+.timeline-item {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 10px 8px 10px 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--t-base);
+}
+
+.timeline-item:hover {
+  background: var(--bg-hover, rgba(22, 93, 255, 0.06));
+}
+
+.timeline-item.active {
+  background: rgba(22, 93, 255, 0.1);
+}
+
+.timeline-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 2px var(--brand-primary);
+  z-index: 1;
+}
+
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeline-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  margin-bottom: 4px;
+  font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.timeline-event {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.ev-node {
+  font-weight: 600;
+}
+
+.ev-relation {
+  color: var(--text-3);
+  font-size: 12px;
+  padding: 0 4px;
+}
+
+.timeline-evidence {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .graph-empty {
@@ -1014,6 +1453,120 @@ onBeforeUnmount(() => {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+}
+
+/* 底部时间轴 */
+.time-axis {
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-2);
+  padding: 8px 16px 12px;
+}
+
+.time-axis-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.time-axis-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.time-axis-title .el-icon {
+  color: var(--brand-primary);
+  font-size: 15px;
+}
+
+.time-axis-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.time-axis-count {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.time-axis-track {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 18px 4px 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 52px;
+}
+
+.time-axis-line {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 24px;
+  height: 2px;
+  background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent));
+  opacity: 0.35;
+  border-radius: 2px;
+}
+
+.time-axis-node {
+  position: relative;
+  flex: 1 0 auto;
+  min-width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  z-index: 1;
+  transition: transform var(--t-base);
+}
+
+.time-axis-node:hover {
+  transform: translateY(-2px);
+}
+
+.time-axis-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 2px solid var(--brand-primary);
+  box-shadow: 0 0 0 2px var(--bg-card);
+  transition: all var(--t-base);
+}
+
+.time-axis-node:hover .time-axis-dot {
+  background: var(--brand-primary);
+  transform: scale(1.2);
+}
+
+.time-axis-node.active .time-axis-dot {
+  background: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(22, 93, 255, 0.25);
+  transform: scale(1.25);
+}
+
+.time-axis-label {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  transition: color var(--t-base);
+}
+
+.time-axis-node:hover .time-axis-label,
+.time-axis-node.active .time-axis-label {
+  color: var(--brand-primary);
+  font-weight: 600;
 }
 
 /* 右侧详情面板 —— flex 布局参与流，展开时挤压中间图谱 */

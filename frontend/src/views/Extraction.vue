@@ -1,6 +1,6 @@
 <template>
   <div class="llm-ext-page">
-    <el-tabs v-model="pageTab" class="llm-ext-page-tabs" type="card">
+    <el-tabs v-model="pageTab" class="llm-ext-page-tabs" type="card" @tab-change="onPageTabChange">
       <el-tab-pane label="知识抽取" name="extract">
         <ExtractionLayout
             theme-color="#409eff"
@@ -274,6 +274,7 @@
                     style="flex: 1"
                     :loading="evalHistLoading"
                     @change="onEvalTaskChange"
+                    @visible-change="onEvalSelectVisibleChange"
                   >
                     <el-option
                       v-for="t in evalHistory"
@@ -282,7 +283,6 @@
                       :label="`#${t.id} · ${t.extractionType || 'LLM'} · ${formatTime(t.createTime)} · ${statusText(t.status)}`"
                     />
                   </el-select>
-                  <el-button :icon="Refresh" @click="loadEvalHistory">刷新</el-button>
                 </div>
 
                 <div v-if="evalTarget" class="eval-meta">
@@ -314,9 +314,6 @@
                       v-model="evalMetrics[m.key]"
                     >{{ m.name }}</el-checkbox>
                   </div>
-                  <el-button size="small" text type="primary" @click="toggleAllMetrics">
-                    {{ isAllMetricsSelected ? '全不选' : '全选' }}
-                  </el-button>
                 </div>
 
                 <div class="eval-actions">
@@ -1053,13 +1050,6 @@ const evalMetrics = ref<Record<EvalMetricKey, boolean>>({
 })
 
 const selectedMetricKeys = computed(() => EVAL_METRICS.filter(m => evalMetrics.value[m.key]).map(m => m.key))
-const isAllMetricsSelected = computed(() => selectedMetricKeys.value.length === EVAL_METRICS.length)
-
-function toggleAllMetrics() {
-  const target = !isAllMetricsSelected.value
-  EVAL_METRICS.forEach(m => { evalMetrics.value[m.key] = target })
-}
-
 // 裁判模型选择（llm_model 表，enabled=1，逻辑删除过滤）
 interface EvalLlmModel { id: number; displayName: string; modelName: string }
 const evalLlmModels = ref<EvalLlmModel[]>([])
@@ -1158,6 +1148,20 @@ async function loadEvalHistory() {
     evalHistory.value = res.data?.records || res.data || []
   } finally {
     evalHistLoading.value = false
+  }
+}
+
+// 切换到质量评估 tab 时自动拉取最新抽取记录
+function onPageTabChange(name: string) {
+  if (name === 'evaluate') {
+    loadEvalHistory()
+  }
+}
+
+// 点击抽取结果下拉框展开时自动刷新最新抽取记录
+function onEvalSelectVisibleChange(visible: boolean) {
+  if (visible) {
+    loadEvalHistory()
   }
 }
 

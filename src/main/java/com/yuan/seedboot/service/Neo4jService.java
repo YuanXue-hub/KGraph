@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,31 +47,118 @@ public class Neo4jService {
         params.put("modelId", modelId);
         params.put("limit", limit);
 
-        // 查询节点
-        List<Map<String, Object>> nodes = executeQuery(
-                "MATCH (n:Entity) WHERE n.modelId = $modelId RETURN n LIMIT $limit",
-                params,
-                record -> nodeToMap(record.get("n").asNode())
-        );
+        // 判断是否为时间快照查询（指定 asOf 或时间范围）
+        boolean isTemporal = (asOf != null && !asOf.isBlank())
+                || (fromTime != null && !fromTime.isBlank())
+                || (toTime != null && !toTime.isBlank());
 
-        // 查询边（限制在已查询节点范围内，支持时间过滤）
-        List<String> nodeIds = nodes.stream()
-                .map(n -> (String) n.get("elementId"))
-                .collect(Collectors.toList());
+        List<Map<String, Object>> nodes;
+        List<Map<String, Object>> edges;
 
-        List<Map<String, Object>> edges = new ArrayList<>();
-        if (!nodeIds.isEmpty()) {
+        if (!isTemporal) {
+            // 全量模式：先查节点，再查节点间所有边
+            nodes = executeQuery(
+                    "MATCH (n:Entity) WHERE n.modelId = $modelId RETURN n LIMIT $limit",
+                    params,
+                    record -> nodeToMap(record.get("n").asNode())
+            );
+
+            List<String> nodeIds = nodes.stream()
+                    .map(n -> (String) n.get("elementId"))
+                    .collect(Collectors.toList());
+
+            edges = new ArrayList<>();
+            if (!nodeIds.isEmpty()) {
+                Map<String, Object> edgeParams = new HashMap<>();
+                edgeParams.put("nodeIds", nodeIds);
+                edges = executeQuery(
+                        "MATCH (a:Entity)-[r]->(b:Entity) " +
+                                "WHERE elementId(a) IN $nodeIds AND elementId(b) IN $nodeIds " +
+                                " RETURN a, r, b",
+                        edgeParams,
+                        record -> buildEdge(record.get("a").asNode(), record.get("r").asRelationship(), record.get("b").asNode())
+                );
+            }
+        } else {
+            // 时间快照模式：先按时间过滤边，再从边中提取节点
+            // 快照只展示有明确时间锚点(vt_from 非空)且在该时刻有效的关系，
+            // 无时间信息的关系不属于任何时间点，不纳入快照。
             Map<String, Object> edgeParams = new HashMap<>();
-            edgeParams.put("nodeIds", nodeIds);
-            String temporalWhere = buildTemporalWhere(asOf, fromTime, toTime, edgeParams);
-            edges = executeQuery(
+            edgeParams.put("modelId", modelId);
+
+            StringBuilder temporalWhere = new StringBuilder();
+            if (asOf != null && !asOf.isBlank()) {
+                // 严格快照：要求 vt_from 非空，且 vt_from <= asOf <= vt_to（vt_to 为空表示仍有效）
+                temporalWhere.append(" AND r.vt_from IS NOT NULL AND r.vt_from <> ''");
+                temporalWhere.append(" AND r.vt_from <= $as_of");
+                temporalWhere.append(" AND (r.vt_to IS NULL OR r.vt_to = '' OR r.vt_to >= $as_of)");
+                edgeParams.put("as_of", asOf.trim());
+            } else {
+                // 时间范围查询：空 vt_from/vt_to 视为无限边界
+                if (fromTime != null && !fromTime.isBlank()) {
+                    temporalWhere.append(" AND (r.vt_to IS NULL OR r.vt_to = '' OR r.vt_to >= $from_time)");
+                    edgeParams.put("from_time", fromTime.trim());
+                }
+                if (toTime != null && !toTime.isBlank()) {
+                    temporalWhere.append(" AND (r.vt_from IS NULL OR r.vt_from = '' OR r.vt_from <= $to_time)");
+                    edgeParams.put("to_time", toTime.trim());
+                }
+            }
+
+            // 查询符合时间条件的边（同时限定两端节点属于该模型）
+            List<Map<String, Object>> edgeRecords = executeQuery(
                     "MATCH (a:Entity)-[r]->(b:Entity) " +
-                            "WHERE elementId(a) IN $nodeIds AND elementId(b) IN $nodeIds " +
+                            "WHERE a.modelId = $modelId AND b.modelId = $modelId " +
                             temporalWhere +
                             " RETURN a, r, b",
                     edgeParams,
-                    record -> buildEdge(record.get("a").asNode(), record.get("r").asRelationship(), record.get("b").asNode())
+                    record -> {
+                        Map<String, Object> row = new HashMap<>();
+                        row.put("source", nodeToMap(record.get("a").asNode()));
+                        row.put("target", nodeToMap(record.get("b").asNode()));
+                        row.put("relation", relationshipToMap(record.get("r").asRelationship()));
+                        return row;
+                    }
             );
+
+            // 从边中去重收集节点
+            Map<String, Map<String, Object>> nodeMap = new LinkedHashMap<>();
+            edges = new ArrayList<>();
+            for (Map<String, Object> row : edgeRecords) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> src = (Map<String, Object>) row.get("source");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> tgt = (Map<String, Object>) row.get("target");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> rel = (Map<String, Object>) row.get("relation");
+
+                String srcId = (String) src.get("elementId");
+                String tgtId = (String) tgt.get("elementId");
+                nodeMap.putIfAbsent(srcId, src);
+                nodeMap.putIfAbsent(tgtId, tgt);
+
+                Map<String, Object> edge = new HashMap<>();
+                edge.put("source", srcId);
+                edge.put("target", tgtId);
+                edge.put("label", rel.get("type"));
+                edge.put("data", rel);
+                edges.add(edge);
+            }
+
+            // 应用 limit 到节点数
+            List<Map<String, Object>> allNodes = new ArrayList<>(nodeMap.values());
+            if (allNodes.size() > limit) {
+                Set<String> limitedIds = allNodes.stream().limit(limit)
+                        .map(n -> (String) n.get("elementId"))
+                        .collect(Collectors.toSet());
+                nodes = allNodes.stream().limit(limit).collect(Collectors.toList());
+                // 只保留两端都在限制节点内的边
+                edges = edges.stream()
+                        .filter(e -> limitedIds.contains(e.get("source")) && limitedIds.contains(e.get("target")))
+                        .collect(Collectors.toList());
+            } else {
+                nodes = allNodes;
+            }
         }
 
         Map<String, Object> result = new HashMap<>();
@@ -236,6 +324,74 @@ public class Neo4jService {
         stats.put("typeDistribution", typeMap);
 
         return stats;
+    }
+
+    /**
+     * 获取时间线事件（按 vt_from 升序排列）
+     * 从关系的 vt_from 字段提取事件时间，返回主体、关系、客体、证据等信息
+     *
+     * @param modelId 模型 id
+     * @return 时间线事件列表，按时间升序
+     */
+    public List<Map<String, Object>> getTimeline(Long modelId) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("modelId", modelId);
+
+        return executeQuery(
+                "MATCH (a:Entity)-[r]->(b:Entity) " +
+                        "WHERE a.modelId = $modelId " +
+                        "  AND r.vt_from IS NOT NULL " +
+                        "  AND r.vt_from <> '' " +
+                        "RETURN a.name AS sourceName, a.type AS sourceType, " +
+                        "       b.name AS targetName, b.type AS targetType, " +
+                        "       r.type AS relation, r.vt_from AS time, " +
+                        "       r.evidenceText AS evidence, " +
+                        "       elementId(a) AS sourceId, elementId(b) AS targetId, " +
+                        "       elementId(r) AS relationId " +
+                        "ORDER BY r.vt_from ASC",
+                params,
+                record -> {
+                    Map<String, Object> event = new HashMap<>();
+                    event.put("sourceName", record.get("sourceName").asString(null));
+                    event.put("sourceType", record.get("sourceType").asString(null));
+                    event.put("targetName", record.get("targetName").asString(null));
+                    event.put("targetType", record.get("targetType").asString(null));
+                    event.put("relation", record.get("relation").asString(null));
+                    event.put("time", record.get("time").asString(null));
+                    Value ev = record.get("evidence");
+                    event.put("evidence", ev.isNull() ? "" : ev.asString(""));
+                    event.put("sourceId", record.get("sourceId").asString());
+                    event.put("targetId", record.get("targetId").asString());
+                    event.put("relationId", record.get("relationId").asString());
+                    return event;
+                });
+    }
+
+    /**
+     * 获取图谱的时间节点列表（关系的 vt_from 去重升序）
+     * 用于构建底部时间轴，点击某个时间点可加载该时刻的图谱快照。
+     *
+     * @param modelId 模型 id
+     * @return 去重并升序排列的时间字符串列表
+     */
+    public List<String> getDistinctTimes(Long modelId) {
+        Map<String, Object> params = new HashMap<>();
+        params.put("modelId", modelId);
+
+        List<String> times = executeQuery(
+                "MATCH (a:Entity)-[r]->(b:Entity) " +
+                        "WHERE a.modelId = $modelId " +
+                        "  AND r.vt_from IS NOT NULL " +
+                        "  AND r.vt_from <> '' " +
+                        "RETURN DISTINCT r.vt_from AS time " +
+                        "ORDER BY time ASC",
+                params,
+                record -> {
+                    Value v = record.get("time");
+                    return v.isNull() ? null : v.asString();
+                });
+
+        return times.stream().filter(t -> t != null && !t.isBlank()).collect(Collectors.toList());
     }
 
     /**

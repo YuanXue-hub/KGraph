@@ -58,7 +58,7 @@
                     v-model="inputText"
                     type="textarea"
                     :rows="8"
-                    :placeholder="corpusMode === 'corpus' ? '选择语料后，文本内容将展示在此' : '请输入需要抽取的文本内容'"
+                    placeholder=""
                     :disabled="corpusMode === 'corpus'"
                   />
                 </div>
@@ -296,12 +296,6 @@ const ENTITY_TYPES = [
   '机构', '国家', '城市', '金额', '艺术品', '法律',
 ]
 
-const SAMPLE_TEXT = `诸葛亮，字孔明，号卧龙，是三国时期蜀汉的杰出政治家与军事家。他出生于琅琊阳都，
-早年隐居于南阳隆中。刘备三顾茅庐后，诸葛亮出山辅佐刘备建立蜀汉政权。
-建兴五年，诸葛亮率军北伐曹魏，驻扎于汉中。他发明了木牛流马与诸葛连弩，
-并在五丈原病逝。诸葛亮精通兵法与奇门遁甲，其著作《出师表》流传千古。
-司马懿是曹魏的重要将领，曾多次与诸葛亮对峙于祁山。赵云、关羽、张飞均为蜀汉名将。`
-
 const projects = ref<Project[]>([])
 const models = ref<ModelInfo[]>([])
 const corpusList = ref<Corpus[]>([])
@@ -309,7 +303,7 @@ const projectId = ref<number | string | undefined>()
 const modelId = ref<number | string | undefined>()
 const corpusId = ref<number | string | undefined>()
 const corpusMode = ref<'corpus' | 'manual'>('manual')
-const inputText = ref(SAMPLE_TEXT)
+const inputText = ref('')
 const corpusLoading = ref(false)
 const extracting = ref(false)
 const result = ref<ExtractResult | null>(null)

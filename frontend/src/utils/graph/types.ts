@@ -64,6 +64,10 @@ export interface GraphAdapter {
   highlightPath(nodeIds: string[], edgeIds: string[]): void
   /** 仅清除路径高亮（不影响选中态） */
   clearPathHighlight(): void
+  /** 搜索高亮：仅高亮指定节点，其余节点保持正常显示（不压暗） */
+  highlightNodes(nodeIds: string[]): void
+  /** 清除搜索高亮 */
+  clearNodeHighlight(): void
   /** 自适应画布，padding 像素 */
   fitView(padding?: number): void
   /** 等待布局收敛后再自适应画布（路径检索后调用，避免力导向动画期间 fitView 不准） */
